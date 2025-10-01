@@ -339,8 +339,10 @@ if tradingOk and shortOk and obBearActive and obBearHasFvg and bearTouch and bea
 // Plotting
 // =============================
 // OB rectangles
+var box bullBox = na
+var box bearBox = na
+
 if plotOb and obBullActive
-    var box bullBox = na
     if na(bullBox)
         bullBox := box.new(left=bar_index, top=obBullHi, right=bar_index+1, bottom=obBullLo, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
     else
@@ -354,7 +356,6 @@ else
         bullBox := na
 
 if plotOb and obBearActive
-    var box bearBox = na
     if na(bearBox)
         bearBox := box.new(left=bar_index, top=obBearHi, right=bar_index+1, bottom=obBearLo, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
     else
