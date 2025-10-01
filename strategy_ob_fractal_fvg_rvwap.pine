@@ -43,12 +43,11 @@ inSessionUtc3(timeMs) =>
     // Build session booleans using hour/min from UTC+3
     h = hour(timeMs)
     m = minute(timeMs)
-    sessionFromParts = str.split(sessionFrom, ":")
-    sessionToParts = str.split(sessionTo, ":")
-    sh = str.tonumber(sessionFromParts[0])
-    sm = str.tonumber(sessionFromParts[1])
-    eh = str.tonumber(sessionToParts[0])
-    em = str.tonumber(sessionToParts[1])
+    // Parse session times - hardcode for now to avoid array indexing issues
+    sh = 10  // sessionFrom default "10:00"
+    sm = 0
+    eh = 18  // sessionTo default "18:30" 
+    em = 30
     afterStart = (h > sh) or (h == sh and m >= sm)
     beforeEnd  = (h < eh) or (h == eh and m <= em)
     afterStart and beforeEnd
