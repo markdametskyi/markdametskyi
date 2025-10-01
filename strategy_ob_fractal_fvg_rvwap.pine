@@ -111,8 +111,9 @@ dnSig = dnFractal[2]
 upSig = upFractal[2]
 
 // Fractal levels: for dn ⇒ level is low of central bar; for up ⇒ level is high of central bar
-dnLevel = dnSig ? low[n][2] : na
-upLevel = upSig ? high[n][2] : na
+// Since we shifted by 2, the central bar is at index [n+2] = [2+2] = [4] from current
+dnLevel = dnSig ? low[4] : na
+upLevel = upSig ? high[4] : na
 
 // Plot fractals
 plotshape(plotFractals and dnSig, style=shape.triangledown, location=location.abovebar, offset=0, color=fractalColor, title="Dn Fractal")
@@ -123,11 +124,11 @@ var line upLevelLine = na
 if dnSig
     if not na(dnLevelLine)
         line.delete(dnLevelLine)
-    dnLevelLine := line.new(bar_index-1, low[n][2], bar_index, low[n][2], extend=extend.right, color=color.new(color.green, 0))
+    dnLevelLine := line.new(bar_index-1, low[4], bar_index, low[4], extend=extend.right, color=color.new(color.green, 0))
 if upSig
     if not na(upLevelLine)
         line.delete(upLevelLine)
-    upLevelLine := line.new(bar_index-1, high[n][2], bar_index, high[n][2], extend=extend.right, color=color.new(color.red, 0))
+    upLevelLine := line.new(bar_index-1, high[4], bar_index, high[4], extend=extend.right, color=color.new(color.red, 0))
 
 // Store last confirmed levels for same-day testing
 var float lastDnLevel = na
@@ -138,10 +139,10 @@ var int   lastUpDay   = na
 currDayUtc3 = dayofmonth(tBarUtc3)
 
 if dnSig
-    lastDnLevel := low[n][2]
+    lastDnLevel := low[4]
     lastDnDay   := currDayUtc3
 if upSig
-    lastUpLevel := high[n][2]
+    lastUpLevel := high[4]
     lastUpDay   := currDayUtc3
 
 // =============================
