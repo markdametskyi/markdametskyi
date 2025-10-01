@@ -344,23 +344,28 @@ if plotOb and obBullActive
     if na(bullBox)
         bullBox := box.new(left=bar_index, top=obBullHi, right=bar_index+1, bottom=obBullLo, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
     else
-        box.set_left(bullBox, box.get_left(bullBox))
         box.set_right(bullBox, bar_index+1)
         box.set_top(bullBox, obBullHi)
         box.set_bottom(bullBox, obBullLo)
 else
     // cleanup
-    na
+    if not na(bullBox)
+        box.delete(bullBox)
+        bullBox := na
 
 if plotOb and obBearActive
     var box bearBox = na
     if na(bearBox)
         bearBox := box.new(left=bar_index, top=obBearHi, right=bar_index+1, bottom=obBearLo, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
     else
-        box.set_left(bearBox, box.get_left(bearBox))
         box.set_right(bearBox, bar_index+1)
         box.set_top(bearBox, obBearHi)
         box.set_bottom(bearBox, obBearLo)
+else
+    // cleanup
+    if not na(bearBox)
+        box.delete(bearBox)
+        bearBox := na
 
 // FVG zones
 if plotFvg and obBullHasFvg and not na(fvgBullLo) and not na(fvgBullHi)
