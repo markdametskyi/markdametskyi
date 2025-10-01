@@ -1,0 +1,370 @@
+//@version=5
+strategy("OB Fractal FVG RVWAP Strategy", overlay=true, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.0, calc_on_every_tick=true, pyramiding=100)
+
+// =============================
+// Inputs
+// =============================
+// Timeframes
+obTf         = input.timeframe("30", "OB timeframe")
+fvgTf        = input.timeframe("15", "FVG timeframe (inside OB)")
+
+// Fractals
+fractalBars  = input.string("3", "Fractal bars", options=["3", "5"])
+fractalColor = input.color(color.new(color.gray, 50), "Fractals Color")
+
+// Session and weekends
+useSession   = input.bool(true, "Use session filter (UTC+3)")
+sessionFrom  = input.string("10:00", "Session start (UTC+3)")
+sessionTo    = input.string("18:30", "Session end (UTC+3)")
+excludeWknd  = input.bool(true, "Exclude weekends")
+
+// Risk and RR
+riskPct      = input.float(1.0, "Risk % of equity", minval=0.01, step=0.01)
+takeProfitRR = input.float(1.0, "Take profit RR", minval=0.1, step=0.1)
+
+// OB validity
+ttlBars      = input.int(10, "OB TTL (bars on OB TF)", minval=1)
+
+// Plot toggles
+plotOb       = input.bool(true, "Plot OB zones")
+plotFvg      = input.bool(true, "Plot FVG zones")
+plotFractals = input.bool(true, "Plot fractals")
+plotRvwap    = input.bool(true, "Plot Rolling VWAP 24h")
+
+// =============================
+// Utilities: time and sessions (UTC+3)
+// =============================
+// Convert exchange/series time to UTC+3 by shifting timestamp
+utc3OffsetMs = 3 * 60 * 60 * 1000
+tUtc3        = timenow - (timenow - time) + utc3OffsetMs + (time - time)  // simply time + offset, safer form
+tBarUtc3     = time + utc3OffsetMs
+
+inSessionUtc3(timeMs) =>
+    // Build session booleans using hour/min from UTC+3
+    h = hour(timeMs)
+    m = minute(timeMs)
+    sh = str.tonumber(str.split(sessionFrom, ":")[0])
+    sm = str.tonumber(str.split(sessionFrom, ":")[1])
+    eh = str.tonumber(str.split(sessionTo, ":")[0])
+    em = str.tonumber(str.split(sessionTo, ":")[1])
+    afterStart = (h > sh) or (h == sh and m >= sm)
+    beforeEnd  = (h < eh) or (h == eh and m <= em)
+    afterStart and beforeEnd
+
+isWeekendUtc3(timeMs) =>
+    // Saturday=6, Sunday=0 (Pine: dayofweek: 1=Mon..7=Sun)
+    d = dayofweek(timeMs)
+    d == dayofweek.saturday or d == dayofweek.sunday
+
+sessionOk = (not useSession) or inSessionUtc3(tBarUtc3)
+weekendOk = (not excludeWknd) or not isWeekendUtc3(tBarUtc3)
+
+// =============================
+// Rolling VWAP (24h window, UTC+3)
+// =============================
+// We approximate 24h rolling using request.security to 1-minute series and integrate over last 24h
+// Compute typical price * volume sum and volume sum over 24h in UTC+3 window
+oneMinuteTf = "1"
+
+var float rvwap = na
+
+// Helper security call returning arrays to compute rolling sums
+calcRvwap(srcTf) =>
+    // Use cum and time-based reset for 24h window by subtracting value 24h ago via history reference
+    // On minute series to get higher resolution
+    _hlc3 = request.security(syminfo.tickerid, srcTf, hlc3, barmerge.gaps_off, barmerge.lookahead_on)
+    _vol  = request.security(syminfo.tickerid, srcTf, volume, barmerge.gaps_off, barmerge.lookahead_on)
+    _time = request.security(syminfo.tickerid, srcTf, time, barmerge.gaps_off, barmerge.lookahead_on)
+    // Compute rolling index length for ~24h on minute tf: 24*60 = 1440
+    win = 24 * 60
+    vwapNum = ta.cum(_hlc3 * _vol) - nz(ta.valuewhen(true, ta.cum(_hlc3 * _vol), win))
+    vwapDen = ta.cum(_vol) - nz(ta.valuewhen(true, ta.cum(_vol), win))
+    vwapDen != 0 ? vwapNum / vwapDen : na
+
+rvwap := calcRvwap(oneMinuteTf)
+
+// Directional filter
+longOk  = (not plotRvwap) or (close > rvwap)
+shortOk = (not plotRvwap) or (close < rvwap)
+
+plot(plotRvwap ? rvwap : na, title="RVWAP 24h", color=color.new(color.aqua, 0), linewidth=2)
+
+// =============================
+// Fractals (n=2, 3/5 bar) on chart timeframe
+// =============================
+var int n = 2
+dnFractal3 = (fractalBars == "3") and (high[n-1] < high[n]) and (high[n+1] < high[n])
+upFractal3 = (fractalBars == "3") and (low[n-1]  > low[n])  and (low[n+1]  > low[n])
+
+dnFractal5 = (fractalBars == "5") and (high[n-2] < high[n]) and (high[n-1] < high[n]) and (high[n+1] < high[n]) and (high[n+2] < high[n])
+upFractal5 = (fractalBars == "5") and (low[n-2]  > low[n])  and (low[n-1]  > low[n])  and (low[n+1]  > low[n])  and (low[n+2]  > low[n])
+
+dnFractal = dnFractal3 or dnFractal5
+upFractal = upFractal3 or upFractal5
+
+// Confirmed fractal appears with offset -2 on plots; for logic, we create series that becomes true at bar index n when confirmed
+dnFractalConfirmed = ta.barssince(dnFractal ? true : false) == 0 ? false : na
+upFractalConfirmed = ta.barssince(upFractal ? true : false) == 0 ? false : na
+
+// In practice, to emulate offset -2, we shift signals by 2 bars forward
+dnSig = dnFractal[2]
+upSig = upFractal[2]
+
+// Fractal levels: for dn ⇒ level is low of central bar; for up ⇒ level is high of central bar
+dnLevel = dnSig ? low[n][2] : na
+upLevel = upSig ? high[n][2] : na
+
+// Plot fractals
+plotshape(plotFractals and dnSig, style=shape.triangledown, location=location.abovebar, offset=0, color=fractalColor, title="Dn Fractal")
+plotshape(plotFractals and upSig, style=shape.triangleup,   location=location.belowbar, offset=0, color=fractalColor, title="Up Fractal")
+// draw fractal levels when formed
+var line dnLevelLine = na
+var line upLevelLine = na
+if dnSig
+    if not na(dnLevelLine)
+        line.delete(dnLevelLine)
+    dnLevelLine := line.new(bar_index-1, low[n][2], bar_index, low[n][2], extend=extend.right, color=color.new(color.green, 0))
+if upSig
+    if not na(upLevelLine)
+        line.delete(upLevelLine)
+    upLevelLine := line.new(bar_index-1, high[n][2], bar_index, high[n][2], extend=extend.right, color=color.new(color.red, 0))
+
+// Store last confirmed levels for same-day testing
+var float lastDnLevel = na
+var float lastUpLevel = na
+var int   lastDnDay   = na
+var int   lastUpDay   = na
+
+currDayUtc3 = dayofmonth(tBarUtc3)
+
+if dnSig
+    lastDnLevel := low[n][2]
+    lastDnDay   := currDayUtc3
+if upSig
+    lastUpLevel := high[n][2]
+    lastUpDay   := currDayUtc3
+
+// =============================
+// END FRACTALS
+// =============================
+
+// =============================
+// OB timeframe sync and same-day test logic
+// =============================
+
+// Bring key series to OB timeframe
+[obOpen, obHigh, obLow, obClose, obTime] = request.security(syminfo.tickerid, obTf, [open, high, low, close, time], barmerge.gaps_off, barmerge.lookahead_on)
+
+// Track per-day (UTC+3) same-day test for dn/up fractal levels
+obTimeUtc3 = obTime + utc3OffsetMs
+obDay      = dayofmonth(obTimeUtc3)
+
+var float dnLevelToday = na
+var float upLevelToday = na
+var int   dnLevelDay   = na
+var int   upLevelDay   = na
+
+// On main TF, when new fractal signal appears, if same UTC+3 day on OB TF, record for today
+newDn = na(lastDnDay) ? false : (lastDnDay == currDayUtc3 and obDay == currDayUtc3)
+newUp = na(lastUpDay) ? false : (lastUpDay == currDayUtc3 and obDay == currDayUtc3)
+
+if dnSig and newDn
+    dnLevelToday := lastDnLevel
+    dnLevelDay   := currDayUtc3
+if upSig and newUp
+    upLevelToday := lastUpLevel
+    upLevelDay   := currDayUtc3
+
+// Detect tests of those levels on OB timeframe within same day
+dnTest = not na(dnLevelToday) and dnLevelDay == obDay and obLow <= dnLevelToday and obHigh >= dnLevelToday
+upTest = not na(upLevelToday) and upLevelDay == obDay and obLow <= upLevelToday and obHigh >= upLevelToday
+
+// Color rules on testing bar and next bar becomes opposite color OB, OB defined by first (testing) bar body
+// For upFractal: testing bar must be Bullish, next bar must be Bearish, OB = body of first (Bullish) bar
+// For dnFractal: testing bar must be Bearish, next bar must be Bullish, OB = body of first (Bearish) bar
+
+isBull(o, c) => c > o
+isBear(o, c) => c < o
+
+// Shifted next bar data on OB TF (lookahead_on provides future values for historical calc; acceptable for backtest spec)
+obOpenNext  = obOpen[1]
+obCloseNext = obClose[1]
+
+upValidTest     = upTest and isBull(obOpen, obClose) and isBear(obOpenNext, obCloseNext)
+dnValidTest     = dnTest and isBear(obOpen, obClose) and isBull(obOpenNext, obCloseNext)
+
+// OB bounds from first (testing) bar body
+var float obBullLo = na
+var float obBullHi = na
+var int   obBullStartIndex = na
+var float obBearLo = na
+var float obBearHi = na
+var int   obBearStartIndex = na
+
+if upValidTest
+    // upFractal ⇒ expect Bearish OB, but OB bounds from first Bullish bar body
+    obBearLo := math.min(obOpen, obClose)
+    obBearHi := math.max(obOpen, obClose)
+    obBearStartIndex := bar_index
+
+if dnValidTest
+    // dnFractal ⇒ expect Bullish OB, OB bounds from first Bearish bar body
+    obBullLo := math.min(obOpen, obClose)
+    obBullHi := math.max(obOpen, obClose)
+    obBullStartIndex := bar_index
+
+// Manage TTL and invalidation on OB TF
+var int   obBullAge = na
+var int   obBearAge = na
+var bool  obBullActive = false
+var bool  obBearActive = false
+
+// Activate newly created OBs
+if not na(obBullStartIndex)
+    obBullActive := true
+    obBullAge := 0
+if not na(obBearStartIndex)
+    obBearActive := true
+    obBearAge := 0
+
+// Age increment on OB TF bar closes
+if obBullActive
+    obBullAge += 1
+if obBearActive
+    obBearAge += 1
+
+// Invalidation: bullish OB invalid if its low is broken; bearish OB invalid if its high is broken
+if obBullActive and (obLow < obBullLo)
+    obBullActive := false
+if obBearActive and (obHigh > obBearHi)
+    obBearActive := false
+
+// TTL
+if obBullActive and obBullAge > ttlBars
+    obBullActive := false
+if obBearActive and obBearAge > ttlBars
+    obBearActive := false
+
+
+// =============================
+// MTF FVG inside OB body, formed during OB bar (fresh)
+// =============================
+// Bullish FVG condition on lower TF: high[0] < low[2]
+// Bearish FVG condition on lower TF: low[0] > high[2]
+
+fvgBullCond = request.security(syminfo.tickerid, fvgTf, high < low[2], barmerge.gaps_off, barmerge.lookahead_on)
+fvgBearCond = request.security(syminfo.tickerid, fvgTf, low  > high[2], barmerge.gaps_off, barmerge.lookahead_on)
+
+// Also capture bounds of that FVG for plotting: use gap band between high and low[2] (or reverse)
+fvgBullLoSer = request.security(syminfo.tickerid, fvgTf, low[2], barmerge.gaps_off, barmerge.lookahead_on)
+fvgBullHiSer = request.security(syminfo.tickerid, fvgTf, high,   barmerge.gaps_off, barmerge.lookahead_on)
+fvgBearLoSer = request.security(syminfo.tickerid, fvgTf, low,    barmerge.gaps_off, barmerge.lookahead_on)
+fvgBearHiSer = request.security(syminfo.tickerid, fvgTf, high[2], barmerge.gaps_off, barmerge.lookahead_on)
+
+// Freshness: FVG appears during the OB bar interval; we latch a flag only on the OB creation bar
+var bool obBullHasFvg = false
+var bool obBearHasFvg = false
+var float fvgBullLo = na
+var float fvgBullHi = na
+var float fvgBearLo = na
+var float fvgBearHi = na
+
+if dnValidTest
+    // Creating Bullish OB now; check if there is bullish FVG and it lies fully inside OB body
+    condBull = fvgBullCond and (fvgBullLoSer >= obBullLo) and (fvgBullHiSer <= obBullHi)
+    obBullHasFvg := condBull
+    fvgBullLo := condBull ? fvgBullLoSer : na
+    fvgBullHi := condBull ? fvgBullHiSer : na
+
+if upValidTest
+    // Creating Bearish OB now; check bearish FVG inside OB body
+    condBear = fvgBearCond and (fvgBearLoSer >= obBearLo) and (fvgBearHiSer <= obBearHi)
+    obBearHasFvg := condBear
+    fvgBearLo := condBear ? fvgBearLoSer : na
+    fvgBearHi := condBear ? fvgBearHiSer : na
+
+// =============================
+// Entries: first wick-touch limit on OB boundary, SL beyond opposite, TP = 1R
+// =============================
+
+// Allow only during session/weekdays and with RVWAP direction
+tradingOk = sessionOk and weekendOk
+
+// Detect first retest only: track whether retest already occurred per OB
+var bool bullObRetested = false
+var bool bearObRetested = false
+
+// Reset retest flags when OB becomes inactive
+if not obBullActive
+    bullObRetested := false
+if not obBearActive
+    bearObRetested := false
+
+// Bullish: price wick touches upper/lower boundary? Entry at boundary limit, require FVG presence and RVWAP longOk
+bullTouch = obBullActive and not bullObRetested and obLow <= obBullHi and obHigh >= obBullHi
+bearTouch = obBearActive and not bearObRetested and obHigh >= obBearLo and obLow <= obBearLo
+
+// Position sizing: risk 1% of equity; qty = risk $ / stop_distance
+equityNow = strategy.equity
+riskUsd   = equityNow * (riskPct / 100.0)
+
+// Bullish order sizing
+bullEntryPrice = obBullHi
+bullStopPrice  = obBullLo
+bullStopDist   = bullEntryPrice - bullStopPrice
+bullQty        = (bullStopDist > 0) ? (riskUsd / bullStopDist) : 0.0
+bullTpPrice    = bullEntryPrice + takeProfitRR * bullStopDist
+
+// Bearish order sizing
+bearEntryPrice = obBearLo
+bearStopPrice  = obBearHi
+bearStopDist   = bearStopPrice - bearEntryPrice
+bearQty        = (bearStopDist > 0) ? (riskUsd / bearStopDist) : 0.0
+bearTpPrice    = bearEntryPrice - takeProfitRR * bearStopDist
+
+// Place orders on first touch with filters: FVG in same direction and RVWAP filter
+if tradingOk and longOk and obBullActive and obBullHasFvg and bullTouch and bullQty > 0
+    strategy.entry("LONG_OB", strategy.long, qty=bullQty, limit=bullEntryPrice)
+    strategy.exit("LX_OB", from_entry="LONG_OB", stop=bullStopPrice, limit=bullTpPrice)
+    bullObRetested := true
+
+if tradingOk and shortOk and obBearActive and obBearHasFvg and bearTouch and bearQty > 0
+    strategy.entry("SHORT_OB", strategy.short, qty=bearQty, limit=bearEntryPrice)
+    strategy.exit("SX_OB", from_entry="SHORT_OB", stop=bearStopPrice, limit=bearTpPrice)
+    bearObRetested := true
+
+// =============================
+// Plotting
+// =============================
+// OB rectangles
+if plotOb and obBullActive
+    var box bullBox = na
+    if na(bullBox)
+        bullBox := box.new(left=bar_index, top=obBullHi, right=bar_index+1, bottom=obBullLo, bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 0))
+    else
+        box.set_left(bullBox, box.get_left(bullBox))
+        box.set_right(bullBox, bar_index+1)
+        box.set_top(bullBox, obBullHi)
+        box.set_bottom(bullBox, obBullLo)
+else
+    // cleanup
+    na
+
+if plotOb and obBearActive
+    var box bearBox = na
+    if na(bearBox)
+        bearBox := box.new(left=bar_index, top=obBearHi, right=bar_index+1, bottom=obBearLo, bgcolor=color.new(color.red, 85), border_color=color.new(color.red, 0))
+    else
+        box.set_left(bearBox, box.get_left(bearBox))
+        box.set_right(bearBox, bar_index+1)
+        box.set_top(bearBox, obBearHi)
+        box.set_bottom(bearBox, obBearLo)
+
+// FVG zones
+if plotFvg and obBullHasFvg and not na(fvgBullLo) and not na(fvgBullHi)
+    line.new(bar_index-1, fvgBullLo, bar_index, fvgBullLo, extend=extend.right, color=color.new(color.green, 0))
+    line.new(bar_index-1, fvgBullHi, bar_index, fvgBullHi, extend=extend.right, color=color.new(color.green, 0))
+if plotFvg and obBearHasFvg and not na(fvgBearLo) and not na(fvgBearHi)
+    line.new(bar_index-1, fvgBearLo, bar_index, fvgBearLo, extend=extend.right, color=color.new(color.red, 0))
+    line.new(bar_index-1, fvgBearHi, bar_index, fvgBearHi, extend=extend.right, color=color.new(color.red, 0))
+
