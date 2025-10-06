@@ -230,11 +230,10 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
             bear_trend_invalidated := true
 
 // ================== Debug Information ==================
-if show_debug
-    plotchar(not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small)
-    plotchar(not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small)
-    plotchar(in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small)
-    plotchar(in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small)
+plotchar(show_debug and not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small)
+plotchar(show_debug and not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small)
+plotchar(show_debug and in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small)
+plotchar(show_debug and in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small)
 
 // ================== Candle Coloring ==================
 barcolor(is_long_entry ? long_candle_color : is_short_entry ? short_candle_color : na)
