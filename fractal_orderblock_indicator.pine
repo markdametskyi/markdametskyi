@@ -114,7 +114,7 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
             // Check if low of either candle is below fractal low
             if ob_low_prev <= fractal_low_level or ob_low <= fractal_low_level
                 // Create Bullish Order Block
-                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 10, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
+                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal high)
@@ -128,7 +128,7 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 10, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
+                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 30, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this complete setup
@@ -148,7 +148,7 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
             // Check if high of either candle is above fractal high
             if ob_high_prev >= fractal_high_level or ob_high >= fractal_high_level
                 // Create Bearish Order Block
-                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 10, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
+                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal low)
@@ -162,7 +162,7 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 10, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
+                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 30, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this complete setup
@@ -211,30 +211,26 @@ if array.size(ob_boxes) > 0 and array.size(ob_results) > 0 and array.size(setup_
 // ==================== VISUALIZATION ====================
 // Draw fractal lines only when new fractals are detected
 if is_fractal_high and not na(fractal_high)
-    fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 10, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
+    fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 50, y2=fractal_high, color=fractal_high_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
     array.push(fractal_lines, fractal_line)
 
 if is_fractal_low and not na(fractal_low)
-    fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 10, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
+    fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 50, y2=fractal_low, color=fractal_low_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
     array.push(fractal_lines, fractal_line)
 
 // ==================== STATISTICS TABLE ====================
 if show_table and barstate.islast
     if na(info_table)
-        info_table := table.new(position.top_right, 2, 4, bgcolor=color.white, border_width=1)
+        info_table := table.new(position.top_right, 2, 2, bgcolor=color.white, border_width=1)
     
     // Calculate probability for complete setups only
     probability = total_complete_setups > 0 ? (successful_complete_setups / total_complete_setups) * 100 : 0
     
-    // Update table
-    table.cell(info_table, 0, 0, "Setup", text_color=color.black, text_size=size.normal)
-    table.cell(info_table, 1, 0, "Probability", text_color=color.black, text_size=size.normal)
-    table.cell(info_table, 0, 1, "POI: " + fractal_tf, text_color=color.black, text_size=size.small)
+    // Update table - simplified version
+    table.cell(info_table, 0, 0, "POI: " + fractal_tf + " | Confirmation: " + ob_tf + " | Target: " + target_tf, text_color=color.black, text_size=size.normal)
+    table.cell(info_table, 1, 0, str.tostring(probability, "#.##") + "%", text_color=color.black, text_size=size.normal)
+    table.cell(info_table, 0, 1, "Complete Setups: " + str.tostring(successful_complete_setups) + "/" + str.tostring(total_complete_setups), text_color=color.black, text_size=size.small)
     table.cell(info_table, 1, 1, str.tostring(probability, "#.##") + "%", text_color=color.black, text_size=size.small)
-    table.cell(info_table, 0, 2, "Confirmation: " + ob_tf, text_color=color.black, text_size=size.small)
-    table.cell(info_table, 1, 2, str.tostring(successful_complete_setups) + "/" + str.tostring(total_complete_setups), text_color=color.black, text_size=size.small)
-    table.cell(info_table, 0, 3, "Target: " + target_tf, text_color=color.black, text_size=size.small)
-    table.cell(info_table, 1, 3, str.tostring(probability, "#.##") + "%", text_color=color.black, text_size=size.small)
 
 // ==================== CLEANUP ====================
 // Clean up old lines and boxes to prevent memory issues
