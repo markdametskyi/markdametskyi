@@ -1,0 +1,225 @@
+//@version=5
+strategy("Fractal Trend Strategy vFinal FIXED + Adaptive Strong Candle", overlay=true, 
+         default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
+
+// ================== Inputs ==================
+left              = input.int(2, title="Candles before", minval=1)
+right             = input.int(2, title="Candles after", minval=1)
+corr_pct          = input.float(60.0, title="% of correction", minval=0.0, maxval=100.0)
+min_strong_pct    = input.float(200.0, title="Min % for strong candle")
+max_strong_pct    = input.float(700.0, title="Max % for strong candle")
+rr                = input.float(2.0, title="RR")
+fixed_risk_usd    = input.float(100.0, title="Base Risk per Trade, USD", minval=0.01)
+wins_to_boost     = input.int(3, title="Wins to Boost Risk", minval=1)
+losses_to_cut     = input.int(3, title="Losses to Cut Risk", minval=1)
+bull_line_color   = input.color(color.new(color.green, 0), title="Bull Line Color")
+bear_line_color   = input.color(color.new(color.red, 0), title="Bear Line Color")
+long_candle_color = input.color(color.new(color.blue, 0), title="Long Entry Candle Color")
+short_candle_color= input.color(color.new(color.purple, 0), title="Short Entry Candle Color")
+stop_type         = input.string("Min/Max Price", title="Stop Loss Type", options=["Min/Max Price", "Signal Candle"])
+show_fractals     = input.bool(true, title="Show Fractals")
+max_lines         = input.int(500, "Max lines keep", minval=50)
+
+// ================== Tick size ==================
+mintick    = syminfo.mintick
+pointvalue = syminfo.pointvalue
+
+// ================== Pivot detection ==================
+pivot_high = ta.pivothigh(high, left, right)
+pivot_low  = ta.pivotlow(low, left, right)
+
+plotshape(show_fractals and not na(pivot_high), style=shape.triangledown, location=location.abovebar, 
+          color=color.gray, offset=-left, title="Fractal High")
+plotshape(show_fractals and not na(pivot_low), style=shape.triangleup, location=location.belowbar, 
+          color=color.gray, offset=-left, title="Fractal Low")
+
+// ================== Variables ==================
+var float last_high_price = na
+var int   last_high_bar   = na
+var bool  last_high_used  = false
+var float last_low_price  = na
+var int   last_low_bar    = na
+var bool  last_low_used   = false
+var line[] lines = array.new_line()
+var int[] fractal_sequence = array.new_int(0)  // 0 = low, 1 = high
+var float prev_bull_low = na
+var float prev_bear_high = na
+
+// Risk management
+var float current_risk       = fixed_risk_usd
+var bool  cutting_mode       = false
+var int   consecutive_wins   = 0
+var int   consecutive_losses = 0
+var bool  boosted            = false
+
+// Candle coloring
+var bool is_long_entry  = false
+var bool is_short_entry = false
+
+// ================== Entry Variables ==================
+var float bull_fractal_low = na
+var float bull_fractal_high = na
+var float bear_fractal_low = na
+var float bear_fractal_high = na
+var float min_corr_low = na
+var float max_corr_high = na
+var float sum_bear_ticks = 0.0
+var float sum_bull_ticks = 0.0
+var int   count_bear = 0
+var int   count_bull = 0
+var bool  in_bullish = false
+var bool  in_bearish = false
+var bool  bull_invalidated = false
+var bool  bear_invalidated = false
+
+// ================== Risk Management Logic ==================
+if strategy.closedtrades > strategy.closedtrades[1]
+    is_win = strategy.wintrades > strategy.wintrades[1]
+    if is_win
+        cutting_mode := false
+        consecutive_losses := 0
+        consecutive_wins += 1
+        current_risk := fixed_risk_usd
+        if consecutive_wins >= wins_to_boost
+            current_risk := current_risk * 2
+            boosted := true
+            consecutive_wins := 0
+    else
+        consecutive_wins := 0
+        if boosted
+            boosted := false
+            current_risk := fixed_risk_usd
+            consecutive_losses := 0
+        else
+            consecutive_losses += 1
+            if not cutting_mode and consecutive_losses >= losses_to_cut
+                cutting_mode := true
+                current_risk := current_risk / 2
+            else if cutting_mode
+                current_risk := current_risk / 2
+        current_risk := math.max(current_risk, 1)
+
+// ================== Fractal Connection ==================
+if not na(pivot_high)
+    thisHighBar = bar_index - left
+    thisHighPrice = pivot_high
+    if not na(last_low_bar) and not last_low_used and last_low_bar < thisHighBar and thisHighPrice > last_low_price and (na(prev_bear_high) or thisHighPrice > prev_bear_high)
+        l = line.new(last_low_bar, last_low_price, thisHighBar, thisHighPrice, xloc=xloc.bar_index, color=bull_line_color, width=2)
+        array.push(lines, l)
+        last_low_used := true
+        prev_bull_low := last_low_price
+    last_high_bar := thisHighBar
+    last_high_price := thisHighPrice
+    last_high_used := false
+    if array.size(fractal_sequence) < 5
+        array.push(fractal_sequence, 1)
+    else
+        array.shift(fractal_sequence)
+        array.push(fractal_sequence, 1)
+
+if not na(pivot_low)
+    thisLowBar = bar_index - left
+    thisLowPrice = pivot_low
+    if not na(last_high_bar) and not last_high_used and last_high_bar < thisLowBar and thisLowPrice < last_high_price and (na(prev_bull_low) or thisLowPrice < prev_bull_low)
+        l = line.new(last_high_bar, last_high_price, thisLowBar, thisLowPrice, xloc=xloc.bar_index, color=bear_line_color, width=2)
+        array.push(lines, l)
+        last_high_used := true
+        prev_bear_high := last_high_price
+    last_low_bar := thisLowBar
+    last_low_price := thisLowPrice
+    last_low_used := false
+    if array.size(fractal_sequence) < 5
+        array.push(fractal_sequence, 0)
+    else
+        array.shift(fractal_sequence)
+        array.push(fractal_sequence, 0)
+
+// Remove old lines
+if array.size(lines) > max_lines
+    removeCount = array.size(lines) - max_lines
+    for i = 0 to removeCount - 1
+        ln = array.shift(lines)
+        line.delete(ln)
+
+// ================== Bullish Trend ==================
+if not na(pivot_high) and not na(last_low_price) and last_low_bar < (bar_index - left)
+    bull_fractal_low := last_low_price
+    bull_fractal_high := pivot_high
+    min_corr_low := ta.lowest(low, bar_index - last_low_bar + 1)
+    drop = bull_fractal_high - min_corr_low
+    drop_max = (bull_fractal_high - bull_fractal_low) * (corr_pct / 100)
+    if min_corr_low < bull_fractal_low or drop > drop_max or not (na(prev_bear_high) or bull_fractal_high > prev_bear_high)
+        bull_invalidated := true
+    else
+        in_bullish := true
+        bull_invalidated := false
+        sum_bear_ticks := 0
+        count_bear := 0
+
+// ================== Bearish Trend ==================
+if not na(pivot_low) and not na(last_high_price) and last_high_bar < (bar_index - left)
+    bear_fractal_high := last_high_price
+    bear_fractal_low := pivot_low
+    max_corr_high := ta.highest(high, bar_index - last_high_bar + 1)
+    rise = max_corr_high - bear_fractal_low
+    rise_max = (bear_fractal_high - bear_fractal_low) * (corr_pct / 100)
+    if max_corr_high > bear_fractal_high or rise > rise_max or not (na(prev_bull_low) or bear_fractal_low < prev_bull_low)
+        bear_invalidated := true
+    else
+        in_bearish := true
+        bear_invalidated := false
+        sum_bull_ticks := 0
+        count_bull := 0
+
+// ================== Bullish Entry ==================
+if in_bullish and not bull_invalidated and array.size(fractal_sequence) >= 2
+    if array.get(fractal_sequence, array.size(fractal_sequence)-2) == 0 and array.get(fractal_sequence, array.size(fractal_sequence)-1) == 1
+        min_corr_low := math.min(min_corr_low, low)
+        drop = bull_fractal_high - min_corr_low
+        drop_max = (bull_fractal_high - bull_fractal_low) * (corr_pct / 100)
+        if min_corr_low < bull_fractal_low or drop > drop_max
+            bull_invalidated := true
+            in_bullish := false
+        else
+            avg_bear = count_bear > 0 ? sum_bear_ticks / count_bear : (bull_fractal_high - bull_fractal_low) / mintick
+            if close > open
+                body_ticks = (close - open) / mintick
+                if body_ticks >= (min_strong_pct/100)*avg_bear and body_ticks <= (max_strong_pct/100)*avg_bear
+                    entry_price = close
+                    sl_price = stop_type == "Min/Max Price" ? min_corr_low : low
+                    risk = entry_price - sl_price
+                    if risk > 0
+                        qty = current_risk / (risk * pointvalue)
+                        tp_price = entry_price + risk*rr
+                        strategy.entry("Long", strategy.long, qty=qty)
+                        strategy.exit("Exit Long", "Long", stop=sl_price, limit=tp_price)
+                        is_long_entry := true
+
+// ================== Bearish Entry ==================
+if in_bearish and not bear_invalidated and array.size(fractal_sequence) >= 2
+    if array.get(fractal_sequence, array.size(fractal_sequence)-2) == 1 and array.get(fractal_sequence, array.size(fractal_sequence)-1) == 0
+        max_corr_high := math.max(max_corr_high, high)
+        rise = max_corr_high - bear_fractal_low
+        rise_max = (bear_fractal_high - bear_fractal_low) * (corr_pct / 100)
+        if max_corr_high > bear_fractal_high or rise > rise_max
+            bear_invalidated := true
+            in_bearish := false
+        else
+            avg_bull = count_bull > 0 ? sum_bull_ticks / count_bull : (bear_fractal_high - bear_fractal_low) / mintick
+            if close < open
+                body_ticks = (open - close) / mintick
+                if body_ticks >= (min_strong_pct/100)*avg_bull and body_ticks <= (max_strong_pct/100)*avg_bull
+                    entry_price = close
+                    sl_price = stop_type == "Min/Max Price" ? max_corr_high : high
+                    risk = sl_price - entry_price
+                    if risk > 0
+                        qty = current_risk / (risk * pointvalue)
+                        tp_price = entry_price - risk*rr
+                        strategy.entry("Short", strategy.short, qty=qty)
+                        strategy.exit("Exit Short", "Short", stop=sl_price, limit=tp_price)
+                        is_short_entry := true
+
+// ================== Candle Coloring ==================
+barcolor(is_long_entry ? long_candle_color : is_short_entry ? short_candle_color : na)
+is_long_entry := false
+is_short_entry := false
