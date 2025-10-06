@@ -32,8 +32,9 @@ var array<box> ob_boxes = array.new<box>()
 var array<line> fractal_lines = array.new<line>()
 var array<line> target_lines = array.new<line>()
 var array<bool> ob_results = array.new<bool>()
-var int total_setups = 0
-var int successful_setups = 0
+var array<bool> setup_completed = array.new<bool>() // Track if setup is complete (fractal + OB + target)
+var int total_complete_setups = 0
+var int successful_complete_setups = 0
 
 // ==================== FRACTAL DETECTION ====================
 // Get data from different timeframes
@@ -118,19 +119,22 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
                 
                 // Find corresponding target (fractal high)
                 float target_level = na
-                for i = array.size(fractal_highs) - 1 to 0
-                    if array.get(fractal_high_times, i) > fractal_low_time
-                        target_level := array.get(fractal_highs, i)
-                        break
+                if array.size(fractal_highs) > 0
+                    for i = array.size(fractal_highs) - 1 to 0
+                        if i >= 0 and i < array.size(fractal_high_times)
+                            if array.get(fractal_high_times, i) > fractal_low_time
+                                target_level := array.get(fractal_highs, i)
+                                break
                 
                 if not na(target_level)
                     // Create target line
                     target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 10, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
                     array.push(target_lines, target_line)
                     
-                    // Start tracking this setup
-                    total_setups += 1
+                    // Start tracking this complete setup
+                    total_complete_setups += 1
                     array.push(ob_results, false)
+                    array.push(setup_completed, true) // This is a complete setup
 
 // Check for Bearish Order Block (after fractal high)
 if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_prev)
@@ -149,29 +153,34 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
                 
                 // Find corresponding target (fractal low)
                 float target_level = na
-                for i = array.size(fractal_lows) - 1 to 0
-                    if array.get(fractal_low_times, i) > fractal_high_time
-                        target_level := array.get(fractal_lows, i)
-                        break
+                if array.size(fractal_lows) > 0
+                    for i = array.size(fractal_lows) - 1 to 0
+                        if i >= 0 and i < array.size(fractal_low_times)
+                            if array.get(fractal_low_times, i) > fractal_high_time
+                                target_level := array.get(fractal_lows, i)
+                                break
                 
                 if not na(target_level)
                     // Create target line
                     target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 10, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
                     array.push(target_lines, target_line)
                     
-                    // Start tracking this setup
-                    total_setups += 1
+                    // Start tracking this complete setup
+                    total_complete_setups += 1
                     array.push(ob_results, false)
+                    array.push(setup_completed, true) // This is a complete setup
 
 // ==================== TARGET VALIDATION ====================
 // Check if targets are reached without breaking OB levels
-if array.size(ob_boxes) > 0 and array.size(ob_results) > 0
+if array.size(ob_boxes) > 0 and array.size(ob_results) > 0 and array.size(setup_completed) > 0
     for i = 0 to array.size(ob_boxes) - 1
-        if i < array.size(ob_boxes) and i < array.size(ob_results)
+        if i < array.size(ob_boxes) and i < array.size(ob_results) and i < array.size(setup_completed)
             ob_box = array.get(ob_boxes, i)
             ob_result = array.get(ob_results, i)
+            is_complete_setup = array.get(setup_completed, i)
             
-            if not ob_result
+            // Only track complete setups (fractal + OB + target)
+            if is_complete_setup and not ob_result
                 ob_left = box.get_left(ob_box)
                 ob_right = box.get_right(ob_box)
                 ob_top = box.get_top(ob_box)
@@ -197,7 +206,7 @@ if array.size(ob_boxes) > 0 and array.size(ob_results) > 0
                             
                             if not ob_broken
                                 array.set(ob_results, i, true)
-                                successful_setups += 1
+                                successful_complete_setups += 1
 
 // ==================== VISUALIZATION ====================
 // Draw fractal lines only when new fractals are detected
@@ -214,8 +223,8 @@ if show_table and barstate.islast
     if na(info_table)
         info_table := table.new(position.top_right, 2, 4, bgcolor=color.white, border_width=1)
     
-    // Calculate probability
-    probability = total_setups > 0 ? (successful_setups / total_setups) * 100 : 0
+    // Calculate probability for complete setups only
+    probability = total_complete_setups > 0 ? (successful_complete_setups / total_complete_setups) * 100 : 0
     
     // Update table
     table.cell(info_table, 0, 0, "Setup", text_color=color.black, text_size=size.normal)
@@ -223,7 +232,7 @@ if show_table and barstate.islast
     table.cell(info_table, 0, 1, "POI: " + fractal_tf, text_color=color.black, text_size=size.small)
     table.cell(info_table, 1, 1, str.tostring(probability, "#.##") + "%", text_color=color.black, text_size=size.small)
     table.cell(info_table, 0, 2, "Confirmation: " + ob_tf, text_color=color.black, text_size=size.small)
-    table.cell(info_table, 1, 2, str.tostring(successful_setups) + "/" + str.tostring(total_setups), text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 2, str.tostring(successful_complete_setups) + "/" + str.tostring(total_complete_setups), text_color=color.black, text_size=size.small)
     table.cell(info_table, 0, 3, "Target: " + target_tf, text_color=color.black, text_size=size.small)
     table.cell(info_table, 1, 3, str.tostring(probability, "#.##") + "%", text_color=color.black, text_size=size.small)
 
