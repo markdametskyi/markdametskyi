@@ -115,41 +115,37 @@ if array.size(fractal_lows) > 0 and barstate.isconfirmed
     
     // Check if we're in the context of the latest fractal low and no OB created yet
     if time >= fractal_low_time and not fractal_ob_already_created
-        // Check if current candle tested the fractal low (went below it)
-        fractal_was_tested = ob_low <= fractal_low_level
+        // Check if previous candle tested the fractal low (went below it) AND current candle is above it
+        fractal_was_tested = ob_low_prev <= fractal_low_level and ob_low > fractal_low_level
         
         if fractal_was_tested
             // Look for bearish candle followed by bullish candle (impulse reversal)
             if ob_close_prev < ob_open_prev and ob_close > ob_open and ob_open_prev > fractal_low_level
-                // Check if OB low is below the fractal level (OB tests the fractal)
-                ob_tests_fractal = ob_low_prev <= fractal_low_level
+                // Create Bullish Order Block - properly positioned
+                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 50, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
+                array.push(ob_boxes, ob_box)
                 
-                if ob_tests_fractal
-                    // Create Bullish Order Block - properly positioned
-                    ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
-                    array.push(ob_boxes, ob_box)
+                // Mark that OB was created for this fractal
+                array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
+                
+                // Find corresponding target (fractal high)
+                float target_level = na
+                if array.size(fractal_highs) > 0
+                    for i = array.size(fractal_highs) - 1 to 0
+                        if i >= 0 and i < array.size(fractal_high_times)
+                            if array.get(fractal_high_times, i) > fractal_low_time
+                                target_level := array.get(fractal_highs, i)
+                                break
+                
+                if not na(target_level)
+                    // Create target line - properly positioned
+                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 100, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
+                    array.push(target_lines, target_line)
                     
-                    // Mark that OB was created for this fractal
-                    array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
-                    
-                    // Find corresponding target (fractal high)
-                    float target_level = na
-                    if array.size(fractal_highs) > 0
-                        for i = array.size(fractal_highs) - 1 to 0
-                            if i >= 0 and i < array.size(fractal_high_times)
-                                if array.get(fractal_high_times, i) > fractal_low_time
-                                    target_level := array.get(fractal_highs, i)
-                                    break
-                    
-                    if not na(target_level)
-                        // Create target line - properly positioned
-                        target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 30, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
-                        array.push(target_lines, target_line)
-                        
-                        // Start tracking this complete setup
-                        total_complete_setups += 1
-                        array.push(ob_results, false)
-                        array.push(setup_completed, true) // This is a complete setup
+                    // Start tracking this complete setup
+                    total_complete_setups += 1
+                    array.push(ob_results, false)
+                    array.push(setup_completed, true) // This is a complete setup
 
 // Check for Bearish Order Block (after fractal high)
 if array.size(fractal_highs) > 0 and barstate.isconfirmed
@@ -159,41 +155,37 @@ if array.size(fractal_highs) > 0 and barstate.isconfirmed
     
     // Check if we're in the context of the latest fractal high and no OB created yet
     if time >= fractal_high_time and not fractal_ob_already_created
-        // Check if current candle tested the fractal high (went above it)
-        fractal_was_tested = ob_high >= fractal_high_level
+        // Check if previous candle tested the fractal high (went above it) AND current candle is below it
+        fractal_was_tested = ob_high_prev >= fractal_high_level and ob_high < fractal_high_level
         
         if fractal_was_tested
             // Look for bullish candle followed by bearish candle (impulse reversal)
             if ob_close_prev > ob_open_prev and ob_close < ob_open and ob_open_prev < fractal_high_level
-                // Check if OB high is above the fractal level (OB tests the fractal)
-                ob_tests_fractal = ob_high_prev >= fractal_high_level
+                // Create Bearish Order Block - properly positioned
+                ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 50, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
+                array.push(ob_boxes, ob_box)
                 
-                if ob_tests_fractal
-                    // Create Bearish Order Block - properly positioned
-                    ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
-                    array.push(ob_boxes, ob_box)
+                // Mark that OB was created for this fractal
+                array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
+                
+                // Find corresponding target (fractal low)
+                float target_level = na
+                if array.size(fractal_lows) > 0
+                    for i = array.size(fractal_lows) - 1 to 0
+                        if i >= 0 and i < array.size(fractal_low_times)
+                            if array.get(fractal_low_times, i) > fractal_high_time
+                                target_level := array.get(fractal_lows, i)
+                                break
+                
+                if not na(target_level)
+                    // Create target line - properly positioned
+                    target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 100, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
+                    array.push(target_lines, target_line)
                     
-                    // Mark that OB was created for this fractal
-                    array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
-                    
-                    // Find corresponding target (fractal low)
-                    float target_level = na
-                    if array.size(fractal_lows) > 0
-                        for i = array.size(fractal_lows) - 1 to 0
-                            if i >= 0 and i < array.size(fractal_low_times)
-                                if array.get(fractal_low_times, i) > fractal_high_time
-                                    target_level := array.get(fractal_lows, i)
-                                    break
-                    
-                    if not na(target_level)
-                        // Create target line - properly positioned
-                        target_line = line.new(x1=bar_index, y1=target_level, x2=bar_index + 30, y2=target_level, color=target_color, width=2, style=line.style_dashed, xloc=xloc.bar_index)
-                        array.push(target_lines, target_line)
-                        
-                        // Start tracking this complete setup
-                        total_complete_setups += 1
-                        array.push(ob_results, false)
-                        array.push(setup_completed, true) // This is a complete setup
+                    // Start tracking this complete setup
+                    total_complete_setups += 1
+                    array.push(ob_results, false)
+                    array.push(setup_completed, true) // This is a complete setup
 
 // ==================== TARGET VALIDATION ====================
 // Check if targets are reached without breaking OB levels
@@ -236,12 +228,33 @@ if array.size(ob_boxes) > 0 and array.size(ob_results) > 0 and array.size(setup_
 // ==================== VISUALIZATION ====================
 // Draw fractal lines only when new fractals are detected
 if is_fractal_high and not na(fractal_high) and barstate.isconfirmed
-    fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 50, y2=fractal_high, color=fractal_high_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
+    fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 100, y2=fractal_high, color=fractal_high_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
     array.push(fractal_lines, fractal_line)
 
 if is_fractal_low and not na(fractal_low) and barstate.isconfirmed
-    fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 50, y2=fractal_low, color=fractal_low_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
+    fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 100, y2=fractal_low, color=fractal_low_color, width=2, style=line.style_solid, xloc=xloc.bar_index)
     array.push(fractal_lines, fractal_line)
+
+// Update existing lines to extend them
+if array.size(fractal_lines) > 0
+    for i = 0 to array.size(fractal_lines) - 1
+        fractal_line = array.get(fractal_lines, i)
+        if not na(fractal_line)
+            line.set_x2(fractal_line, bar_index + 100)
+
+// Update existing target lines to extend them
+if array.size(target_lines) > 0
+    for i = 0 to array.size(target_lines) - 1
+        target_line = array.get(target_lines, i)
+        if not na(target_line)
+            line.set_x2(target_line, bar_index + 100)
+
+// Update existing OB boxes to extend them
+if array.size(ob_boxes) > 0
+    for i = 0 to array.size(ob_boxes) - 1
+        ob_box = array.get(ob_boxes, i)
+        if not na(ob_box)
+            box.set_right(ob_box, bar_index + 50)
 
 // ==================== STATISTICS TABLE ====================
 if show_table and barstate.islast
