@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v2.0", overlay=true, 
+strategy("Fractal Trend Strategy v2.0 - DEBUG", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
@@ -10,8 +10,6 @@ min_strong_pct    = input.float(400.0, title="Min % for strong candle")
 max_strong_pct    = input.float(700.0, title="Max % for strong candle")
 rr                = input.float(2.0, title="RR")
 fixed_risk_usd    = input.float(100.0, title="Base Risk per Trade, USD", minval=0.01)
-wins_to_boost     = input.int(3, title="Wins to Boost Risk", minval=1)
-losses_to_cut     = input.int(3, title="Losses to Cut Risk", minval=1)
 bull_line_color   = input.color(color.new(color.green, 0), title="Bull Line Color")
 bear_line_color   = input.color(color.new(color.red, 0), title="Bear Line Color")
 long_candle_color = input.color(color.new(color.blue, 0), title="Long Entry Candle Color")
@@ -19,6 +17,7 @@ short_candle_color= input.color(color.new(color.purple, 0), title="Short Entry C
 stop_type         = input.string("Min/Max Price", title="Stop Loss Type", options=["Min/Max Price", "Signal Candle"])
 show_fractals     = input.bool(true, title="Show Fractals")
 max_lines         = input.int(500, "Max lines keep", minval=50)
+show_debug        = input.bool(true, title="Show Debug Info")
 
 // ================== Tick size ==================
 mintick    = syminfo.mintick
@@ -35,13 +34,6 @@ plotshape(show_fractals and not na(pivot_low), style=shape.triangleup, location=
 
 // ================== Variables ==================
 var line[] lines = array.new_line()
-
-// Risk management
-var float current_risk       = fixed_risk_usd
-var bool  cutting_mode       = false
-var int   consecutive_wins   = 0
-var int   consecutive_losses = 0
-var bool  boosted            = false
 
 // Candle coloring
 var bool is_long_entry  = false
@@ -77,33 +69,6 @@ var float sum_bear_candle_ticks = 0.0
 var float sum_bull_candle_ticks = 0.0
 var int   count_bear_candles = 0
 var int   count_bull_candles = 0
-
-// ================== Risk Management Logic ==================
-if strategy.closedtrades > strategy.closedtrades[1]
-    is_win = strategy.wintrades > strategy.wintrades[1]
-    if is_win
-        cutting_mode := false
-        consecutive_losses := 0
-        consecutive_wins += 1
-        current_risk := fixed_risk_usd
-        if consecutive_wins >= wins_to_boost
-            current_risk := current_risk * 2
-            boosted := true
-            consecutive_wins := 0
-    else
-        consecutive_wins := 0
-        if boosted
-            boosted := false
-            current_risk := fixed_risk_usd
-            consecutive_losses := 0
-        else
-            consecutive_losses += 1
-            if not cutting_mode and consecutive_losses >= losses_to_cut
-                cutting_mode := true
-                current_risk := current_risk / 2
-            else if cutting_mode
-                current_risk := current_risk / 2
-        current_risk := math.max(current_risk, 1)
 
 // ================== Fractal Detection and Trend Lines ==================
 if not na(pivot_high)
@@ -229,7 +194,7 @@ if in_bullish_trend and not bull_trend_invalidated and close > open
         risk = entry_price - sl_price
         
         if risk > 0
-            qty = current_risk / (risk * pointvalue)
+            qty = fixed_risk_usd / (risk * pointvalue)
             tp_price = entry_price + risk * rr
             
             strategy.entry("Long", strategy.long, qty=qty)
@@ -253,7 +218,7 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
         risk = sl_price - entry_price
         
         if risk > 0
-            qty = current_risk / (risk * pointvalue)
+            qty = fixed_risk_usd / (risk * pointvalue)
             tp_price = entry_price - risk * rr
             
             strategy.entry("Short", strategy.short, qty=qty)
@@ -265,11 +230,11 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
             bear_trend_invalidated := true
 
 // ================== Debug Information ==================
-// Uncomment these lines for debugging
-// plotchar(not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small)
-// plotchar(not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small)
-// plotchar(in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small)
-// plotchar(in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small)
+if show_debug
+    plotchar(not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small)
+    plotchar(not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small)
+    plotchar(in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small)
+    plotchar(in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small)
 
 // ================== Candle Coloring ==================
 barcolor(is_long_entry ? long_candle_color : is_short_entry ? short_candle_color : na)
