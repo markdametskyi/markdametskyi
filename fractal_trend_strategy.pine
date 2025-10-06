@@ -1,0 +1,242 @@
+//@version=5
+strategy("Fractal Trend Strategy", shorttitle="FTS", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ==================== INPUT PARAMETERS ====================
+// Fractal parameters
+candles_before = input.int(2, "Candles Before", minval=1, maxval=10)
+candles_after = input.int(2, "Candles After", minval=1, maxval=10)
+
+// Correction filter
+correction_percent = input.float(60.0, "Max Correction %", minval=0.1, maxval=99.9, step=0.1) / 100
+
+// Strong candle parameters
+min_strong_candle_percent = input.float(400.0, "Min Strong Candle %", minval=100.0, step=10.0) / 100
+max_strong_candle_percent = input.float(700.0, "Max Strong Candle %", minval=100.0, step=10.0) / 100
+
+// Risk management
+risk_per_trade = input.float(100.0, "Risk per Trade (USD)", minval=1.0, step=10.0)
+risk_reward_ratio = input.float(2.0, "Risk:Reward Ratio", minval=0.5, step=0.1)
+
+// Stop placement options
+stop_placement = input.string("Min/Max Price", "Stop Placement", options=["Min/Max Price", "Strong Candle"])
+
+// Colors
+bullish_line_color = input.color(color.green, "Bullish Trend Line")
+bearish_line_color = input.color(color.red, "Bearish Trend Line")
+long_candle_color = input.color(color.blue, "Long Entry Candle")
+short_candle_color = input.color(color.purple, "Short Entry Candle")
+
+// ==================== VARIABLES ====================
+var float fractal_low_price = na
+var float fractal_high_price = na
+var int fractal_low_bar = na
+var int fractal_high_bar = na
+var bool trend_direction = na // true = bullish, false = bearish
+var bool trend_confirmed = false
+var float trend_start_price = na
+var float trend_end_price = na
+var int trend_start_bar = na
+var int trend_end_bar = na
+var float correction_start_price = na
+var float correction_end_price = na
+var int correction_start_bar = na
+var int correction_end_bar = na
+var array<float> bearish_candle_lengths = array.new<float>()
+var array<float> bullish_candle_lengths = array.new<float>()
+var bool in_correction = false
+var float min_correction_price = na
+var float max_correction_price = na
+var bool position_allowed = true
+
+// ==================== FRACTAL DETECTION ====================
+// Detect fractal lows and highs using ta.pivothigh/low
+fractal_low = ta.pivotlow(low, candles_before, candles_after)
+fractal_high = ta.pivothigh(high, candles_before, candles_after)
+
+// Update fractal points when confirmed
+if not na(fractal_low)
+    fractal_low_price := fractal_low
+    fractal_low_bar := bar_index - candles_after
+    
+if not na(fractal_high)
+    fractal_high_price := fractal_high
+    fractal_high_bar := bar_index - candles_after
+
+// ==================== TREND DETECTION ====================
+// Detect bullish trend: fractal low followed by fractal high
+if not na(fractal_low_price) and not na(fractal_high_price) and not na(fractal_low_bar) and not na(fractal_high_bar)
+    if fractal_high_bar > fractal_low_bar and trend_direction != true
+        trend_direction := true
+        trend_start_price := fractal_low_price
+        trend_end_price := fractal_high_price
+        trend_start_bar := fractal_low_bar
+        trend_end_bar := fractal_high_bar
+        correction_start_price := fractal_high_price
+        correction_start_bar := fractal_high_bar
+        in_correction := true
+        position_allowed := true
+        array.clear(bearish_candle_lengths)
+        array.clear(bullish_candle_lengths)
+        min_correction_price := fractal_high_price
+        max_correction_price := fractal_high_price
+
+// Detect bearish trend: fractal high followed by fractal low
+if not na(fractal_low_price) and not na(fractal_high_price) and not na(fractal_low_bar) and not na(fractal_high_bar)
+    if fractal_low_bar > fractal_high_bar and trend_direction != false
+        trend_direction := false
+        trend_start_price := fractal_high_price
+        trend_end_price := fractal_low_price
+        trend_start_bar := fractal_high_bar
+        trend_end_bar := fractal_low_bar
+        correction_start_price := fractal_low_price
+        correction_start_bar := fractal_low_bar
+        in_correction := true
+        position_allowed := true
+        array.clear(bearish_candle_lengths)
+        array.clear(bullish_candle_lengths)
+        min_correction_price := fractal_low_price
+        max_correction_price := fractal_low_price
+
+// ==================== CORRECTION TRACKING ====================
+if in_correction and trend_direction == true // Bullish trend correction
+    // Update correction range
+    if low < min_correction_price
+        min_correction_price := low
+    if high > max_correction_price
+        max_correction_price := high
+    
+    // Check if correction exceeds limit
+    trend_distance = trend_end_price - trend_start_price
+    max_allowed_correction = trend_end_price - (trend_distance * correction_percent)
+    
+    if low < max_allowed_correction
+        position_allowed := false
+        in_correction := false
+    
+    // Track bearish candles during correction
+    if close < open
+        candle_length = math.abs(close - open)
+        array.push(bearish_candle_lengths, candle_length)
+    
+    // Check for trend invalidation
+    if low < trend_start_price
+        position_allowed := false
+        in_correction := false
+
+if in_correction and trend_direction == false // Bearish trend correction
+    // Update correction range
+    if high > max_correction_price
+        max_correction_price := high
+    if low < min_correction_price
+        min_correction_price := low
+    
+    // Check if correction exceeds limit
+    trend_distance = trend_start_price - trend_end_price
+    max_allowed_correction = trend_end_price + (trend_distance * correction_percent)
+    
+    if high > max_allowed_correction
+        position_allowed := false
+        in_correction := false
+    
+    // Track bullish candles during correction
+    if close > open
+        candle_length = math.abs(close - open)
+        array.push(bullish_candle_lengths, candle_length)
+    
+    // Check for trend invalidation
+    if high > trend_start_price
+        position_allowed := false
+        in_correction := false
+
+// ==================== ENTRY LOGIC ====================
+var float entry_price = na
+var float stop_price = na
+var float target_price = na
+var float position_size = na
+
+// Calculate average candle length
+avg_bearish_length = array.size(bearish_candle_lengths) > 0 ? array.avg(bearish_candle_lengths) : 0
+avg_bullish_length = array.size(bullish_candle_lengths) > 0 ? array.avg(bullish_candle_lengths) : 0
+
+// Bullish entry conditions
+if trend_direction == true and position_allowed and in_correction and close > open
+    current_candle_length = math.abs(close - open)
+    min_required_length = avg_bearish_length * min_strong_candle_percent
+    max_allowed_length = avg_bearish_length * max_strong_candle_percent
+    
+    if avg_bearish_length > 0 and current_candle_length >= min_required_length and current_candle_length <= max_allowed_length
+        entry_price := close
+        
+        // Calculate stop price
+        if stop_placement == "Min/Max Price"
+            stop_price := min_correction_price
+        else
+            stop_price := low
+        
+        // Calculate target price
+        risk_distance = entry_price - stop_price
+        target_price := entry_price + (risk_distance * risk_reward_ratio)
+        
+        // Calculate position size based on risk
+        if risk_distance > 0
+            position_size := risk_per_trade / (risk_distance * syminfo.mintick)
+            strategy.entry("Long", strategy.long, qty=position_size)
+            strategy.exit("Long Exit", "Long", stop=stop_price, limit=target_price)
+        
+        // Reset for next signal
+        in_correction := false
+        position_allowed := false
+
+// Bearish entry conditions
+if trend_direction == false and position_allowed and in_correction and close < open
+    current_candle_length = math.abs(close - open)
+    min_required_length = avg_bullish_length * min_strong_candle_percent
+    max_allowed_length = avg_bullish_length * max_strong_candle_percent
+    
+    if avg_bullish_length > 0 and current_candle_length >= min_required_length and current_candle_length <= max_allowed_length
+        entry_price := close
+        
+        // Calculate stop price
+        if stop_placement == "Min/Max Price"
+            stop_price := max_correction_price
+        else
+            stop_price := high
+        
+        // Calculate target price
+        risk_distance = stop_price - entry_price
+        target_price := entry_price - (risk_distance * risk_reward_ratio)
+        
+        // Calculate position size based on risk
+        if risk_distance > 0
+            position_size := risk_per_trade / (risk_distance * syminfo.mintick)
+            strategy.entry("Short", strategy.short, qty=position_size)
+            strategy.exit("Short Exit", "Short", stop=stop_price, limit=target_price)
+        
+        // Reset for next signal
+        in_correction := false
+        position_allowed := false
+
+// ==================== VISUALIZATION ====================
+// Plot fractal points
+plotshape(fractal_low, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small)
+plotshape(fractal_high, style=shape.triangledown, location=location.abovebar, color=color.red, size=size.small)
+
+// Plot trend lines
+if not na(trend_start_price) and not na(trend_end_price) and not na(trend_start_bar) and not na(trend_end_bar)
+    line_color = trend_direction ? bullish_line_color : bearish_line_color
+    line.new(trend_start_bar, trend_start_price, trend_end_bar, trend_end_price, color=line_color, width=2)
+
+// Color entry candles
+if not na(entry_price) and barstate.isconfirmed
+    candle_color = trend_direction ? long_candle_color : short_candle_color
+    barcolor(candle_color)
+
+// Plot stop and target levels
+if not na(stop_price)
+    hline(stop_price, "Stop Level", color=color.red, linestyle=hline.style_dashed)
+if not na(target_price)
+    hline(target_price, "Target Level", color=color.green, linestyle=hline.style_dashed)
+
+// ==================== ALERTS ====================
+if not na(entry_price) and barstate.isconfirmed
+    alert("Entry Signal: " + (trend_direction ? "Long" : "Short") + " at " + str.tostring(entry_price), alert.freq_once_per_bar)
