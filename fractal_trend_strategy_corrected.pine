@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v2.3 - Fixed Lines", overlay=true, 
+strategy("Fractal Trend Strategy v2.4 - Corrected Offsets", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
@@ -30,6 +30,7 @@ pointvalue = syminfo.pointvalue
 pivot_high = ta.pivothigh(high, left, right)
 pivot_low  = ta.pivotlow(low, left, right)
 
+// Correct offset for fractal markers - show them at the actual fractal bar
 plotshape(show_fractals and not na(pivot_high), style=shape.triangledown, location=location.abovebar, 
           color=color.gray, offset=-right, title="Fractal High")
 plotshape(show_fractals and not na(pivot_low), style=shape.triangleup, location=location.belowbar, 
@@ -317,8 +318,9 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
             count_bull_candles := 0
 
 // ================== Debug Information ==================
-plotchar(show_debug and not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small)
-plotchar(show_debug and not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small)
+// Debug markers with correct offset
+plotchar(show_debug and not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small, offset=-right)
+plotchar(show_debug and not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small, offset=-right)
 plotchar(show_debug and in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small)
 plotchar(show_debug and in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small)
 
