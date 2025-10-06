@@ -274,7 +274,10 @@ if in_bullish_trend and not bull_trend_invalidated and close > open
     
     if current_candle_ticks >= min_required_ticks and current_candle_ticks <= max_required_ticks
         entry_price = close
+        // For stop loss, use the most conservative level
         sl_price = stop_type == "Min/Max Price" ? min_correction_low : low
+        // Ensure stop is below the fractal low for additional safety
+        sl_price := math.min(sl_price, bull_fractal_low)
         risk = entry_price - sl_price
         
         if risk > 0
@@ -301,7 +304,10 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
     
     if current_candle_ticks >= min_required_ticks and current_candle_ticks <= max_required_ticks
         entry_price = close
+        // For stop loss, use the most conservative level
         sl_price = stop_type == "Min/Max Price" ? max_correction_high : high
+        // Ensure stop is above the fractal high for additional safety
+        sl_price := math.max(sl_price, bear_fractal_high)
         risk = sl_price - entry_price
         
         if risk > 0
