@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v2.5 - All Offsets Fixed", overlay=true, 
+strategy("Fractal Trend Strategy v2.6 - Complete Fix", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
