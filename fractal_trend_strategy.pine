@@ -227,9 +227,13 @@ if not na(trend_start_price) and not na(trend_end_price) and not na(trend_start_
     line.new(trend_start_bar, trend_start_price, trend_end_bar, trend_end_price, color=line_color, width=2)
 
 // Color entry candles
+var color candle_color = na
 if not na(entry_price) and barstate.isconfirmed
-    candle_color = trend_direction ? long_candle_color : short_candle_color
-    barcolor(candle_color)
+    candle_color := trend_direction ? long_candle_color : short_candle_color
+else
+    candle_color := na
+
+barcolor(candle_color)
 
 // Plot stop and target levels
 if not na(stop_price)
