@@ -96,15 +96,7 @@ if array.size(fractal_lows) > 0
             // Check if low of either candle is below fractal low
             if ob_low[1] <= fractal_low_level or ob_low <= fractal_low_level
                 // Create Bullish Order Block
-                ob_box = box.new(
-                    left=ob_time[1], 
-                    top=ob_high[1], 
-                    right=ob_time + ob_extension * 60000, 
-                    bottom=ob_low[1], 
-                    bgcolor=ob_color, 
-                    border_color=color.blue,
-                    border_width=2
-                )
+                ob_box = box.new(left=ob_time[1], top=ob_high[1], right=ob_time + ob_extension * 60000, bottom=ob_low[1], bgcolor=ob_color, border_color=color.blue, border_width=2)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal high)
@@ -143,15 +135,7 @@ if array.size(fractal_highs) > 0
             // Check if high of either candle is above fractal high
             if ob_high[1] >= fractal_high_level or ob_high >= fractal_high_level
                 // Create Bearish Order Block
-                ob_box = box.new(
-                    left=ob_time[1], 
-                    top=ob_high[1], 
-                    right=ob_time + ob_extension * 60000, 
-                    bottom=ob_low[1], 
-                    bgcolor=ob_color, 
-                    border_color=color.blue,
-                    border_width=2
-                )
+                ob_box = box.new(left=ob_time[1], top=ob_high[1], right=ob_time + ob_extension * 60000, bottom=ob_low[1], bgcolor=ob_color, border_color=color.blue, border_width=2)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal low)
@@ -163,15 +147,7 @@ if array.size(fractal_highs) > 0
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(
-                        x1=ob_time, 
-                        y1=target_level, 
-                        x2=ob_time + 100 * 60000, 
-                        y2=target_level, 
-                        color=target_color, 
-                        width=2, 
-                        style=line.style_dashed
-                    )
+                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 100 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this setup
@@ -220,15 +196,7 @@ if array.size(fractal_highs) > 0
         fractal_high = array.get(fractal_highs, i)
         fractal_time = array.get(fractal_high_times, i)
         
-        fractal_line = line.new(
-            x1=fractal_time, 
-            y1=fractal_high, 
-            x2=time + 50 * 60000, 
-            y2=fractal_high, 
-            color=fractal_high_color, 
-            width=1, 
-            style=line.style_solid
-        )
+        fractal_line = line.new(x1=fractal_time, y1=fractal_high, x2=time + 50 * 60000, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid)
         array.push(fractal_lines, fractal_line)
 
 if array.size(fractal_lows) > 0
@@ -236,15 +204,7 @@ if array.size(fractal_lows) > 0
         fractal_low = array.get(fractal_lows, i)
         fractal_time = array.get(fractal_low_times, i)
         
-        fractal_line = line.new(
-            x1=fractal_time, 
-            y1=fractal_low, 
-            x2=time + 50 * 60000, 
-            y2=fractal_low, 
-            color=fractal_low_color, 
-            width=1, 
-            style=line.style_solid
-        )
+        fractal_line = line.new(x1=fractal_time, y1=fractal_low, x2=time + 50 * 60000, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid)
         array.push(fractal_lines, fractal_line)
 
 // ==================== STATISTICS TABLE ====================
