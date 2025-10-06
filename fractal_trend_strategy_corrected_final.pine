@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v4.0 - Final", overlay=true, 
+strategy("Fractal Trend Strategy v4.1 - Corrected Final", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
