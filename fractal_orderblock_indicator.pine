@@ -108,15 +108,7 @@ if array.size(fractal_lows) > 0
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(
-                        x1=ob_time, 
-                        y1=target_level, 
-                        x2=ob_time + 100 * 60000, 
-                        y2=target_level, 
-                        color=target_color, 
-                        width=2, 
-                        style=line.style_dashed
-                    )
+                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 100 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this setup
