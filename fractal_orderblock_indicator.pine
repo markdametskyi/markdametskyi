@@ -167,54 +167,47 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
 // Check if targets are reached without breaking OB levels
 if array.size(ob_boxes) > 0 and array.size(ob_results) > 0
     for i = 0 to array.size(ob_boxes) - 1
-        ob_box = array.get(ob_boxes, i)
-        ob_result = array.get(ob_results, i)
-        
-        if not ob_result
-            ob_left = box.get_left(ob_box)
-            ob_right = box.get_right(ob_box)
-            ob_top = box.get_top(ob_box)
-            ob_bottom = box.get_bottom(ob_box)
+        if i < array.size(ob_boxes) and i < array.size(ob_results)
+            ob_box = array.get(ob_boxes, i)
+            ob_result = array.get(ob_results, i)
             
-            // Check if current time is within OB tracking period
-            if time >= ob_left and time <= ob_right
-                // Check for target line
-                if i < array.size(target_lines)
-                    target_line = array.get(target_lines, i)
-                    target_y = line.get_y1(target_line)
-                    
-                    // Check if price reached target
-                    if high >= target_y
-                        // Check if OB level was not broken
-                        ob_broken = false
-                        if ob_bottom < ob_top // Bullish OB
-                            if low <= ob_bottom
-                                ob_broken := true
-                        else // Bearish OB  
-                            if high >= ob_top
-                                ob_broken := true
+            if not ob_result
+                ob_left = box.get_left(ob_box)
+                ob_right = box.get_right(ob_box)
+                ob_top = box.get_top(ob_box)
+                ob_bottom = box.get_bottom(ob_box)
+                
+                // Check if current time is within OB tracking period
+                if bar_index >= ob_left and bar_index <= ob_right
+                    // Check for target line
+                    if i < array.size(target_lines)
+                        target_line = array.get(target_lines, i)
+                        target_y = line.get_y1(target_line)
                         
-                        if not ob_broken
-                            array.set(ob_results, i, true)
-                            successful_setups += 1
+                        // Check if price reached target
+                        if high >= target_y
+                            // Check if OB level was not broken
+                            ob_broken = false
+                            if ob_bottom < ob_top // Bullish OB
+                                if low <= ob_bottom
+                                    ob_broken := true
+                            else // Bearish OB  
+                                if high >= ob_top
+                                    ob_broken := true
+                            
+                            if not ob_broken
+                                array.set(ob_results, i, true)
+                                successful_setups += 1
 
 // ==================== VISUALIZATION ====================
-// Draw fractal lines
-if array.size(fractal_highs) > 0
-    for i = 0 to array.size(fractal_highs) - 1
-        fractal_high = array.get(fractal_highs, i)
-        fractal_time = array.get(fractal_high_times, i)
-        
-        fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 10, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
-        array.push(fractal_lines, fractal_line)
+// Draw fractal lines only when new fractals are detected
+if is_fractal_high and not na(fractal_high)
+    fractal_line = line.new(x1=bar_index, y1=fractal_high, x2=bar_index + 10, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
+    array.push(fractal_lines, fractal_line)
 
-if array.size(fractal_lows) > 0
-    for i = 0 to array.size(fractal_lows) - 1
-        fractal_low = array.get(fractal_lows, i)
-        fractal_time = array.get(fractal_low_times, i)
-        
-        fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 10, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
-        array.push(fractal_lines, fractal_line)
+if is_fractal_low and not na(fractal_low)
+    fractal_line = line.new(x1=bar_index, y1=fractal_low, x2=bar_index + 10, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid, xloc=xloc.bar_index)
+    array.push(fractal_lines, fractal_line)
 
 // ==================== STATISTICS TABLE ====================
 if show_table and barstate.islast
