@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v3.0 - Final", overlay=true, 
+strategy("Fractal Trend Strategy v3.1 - With Candle Filter", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
@@ -281,7 +281,7 @@ if in_bullish_trend and not bull_trend_invalidated and close > open
             // Ensure stop is below the fractal low for additional safety
             sl_price := math.min(sl_price, bull_fractal_low)
             risk = entry_price - sl_price
-        
+            
             if risk > 0
                 qty = current_risk / (risk * pointvalue)
                 tp_price = entry_price + risk * rr
@@ -313,7 +313,7 @@ if in_bearish_trend and not bear_trend_invalidated and close < open
             // Ensure stop is above the fractal high for additional safety
             sl_price := math.max(sl_price, bear_fractal_high)
             risk = sl_price - entry_price
-        
+            
             if risk > 0
                 qty = current_risk / (risk * pointvalue)
                 tp_price = entry_price - risk * rr
