@@ -125,7 +125,7 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 100 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
+                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 10 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this setup
@@ -156,7 +156,7 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
                 
                 if not na(target_level)
                     // Create target line
-                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 100 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
+                    target_line = line.new(x1=ob_time, y1=target_level, x2=ob_time + 10 * 60000, y2=target_level, color=target_color, width=2, style=line.style_dashed)
                     array.push(target_lines, target_line)
                     
                     // Start tracking this setup
@@ -205,7 +205,7 @@ if array.size(fractal_highs) > 0
         fractal_high = array.get(fractal_highs, i)
         fractal_time = array.get(fractal_high_times, i)
         
-        fractal_line = line.new(x1=fractal_time, y1=fractal_high, x2=time + 50 * 60000, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid)
+        fractal_line = line.new(x1=fractal_time, y1=fractal_high, x2=time + 10 * 60000, y2=fractal_high, color=fractal_high_color, width=1, style=line.style_solid)
         array.push(fractal_lines, fractal_line)
 
 if array.size(fractal_lows) > 0
@@ -213,7 +213,7 @@ if array.size(fractal_lows) > 0
         fractal_low = array.get(fractal_lows, i)
         fractal_time = array.get(fractal_low_times, i)
         
-        fractal_line = line.new(x1=fractal_time, y1=fractal_low, x2=time + 50 * 60000, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid)
+        fractal_line = line.new(x1=fractal_time, y1=fractal_low, x2=time + 10 * 60000, y2=fractal_low, color=fractal_low_color, width=1, style=line.style_solid)
         array.push(fractal_lines, fractal_line)
 
 // ==================== STATISTICS TABLE ====================
