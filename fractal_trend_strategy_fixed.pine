@@ -1,5 +1,5 @@
 //@version=5
-strategy("Fractal Trend Strategy v2.2 - Validated", overlay=true, 
+strategy("Fractal Trend Strategy v2.3 - Fixed Lines", overlay=true, 
          default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
 
 // ================== Inputs ==================
@@ -20,6 +20,7 @@ stop_type         = input.string("Min/Max Price", title="Stop Loss Type", option
 show_fractals     = input.bool(true, title="Show Fractals")
 max_lines         = input.int(500, "Max lines keep", minval=50)
 show_debug        = input.bool(false, title="Show Debug Info")
+enable_validation = input.bool(true, title="Enable Trend Validation")
 
 // ================== Tick size ==================
 mintick    = syminfo.mintick
@@ -117,12 +118,12 @@ if not na(pivot_high)
     
     // Check for bullish trend (low -> high)
     if not na(last_fractal_low) and not last_fractal_low_used and last_fractal_low_bar < thisHighBar and thisHighPrice > last_fractal_low
-        // Validate bullish trend: if starting from previous bearish low, new high must be higher than previous bullish high
+        // Optional validation
         is_valid_bullish = true
-        if not na(last_bear_fractal_low) and math.abs(last_fractal_low - last_bear_fractal_low) < mintick
-            // This bullish trend starts from the same low as previous bearish trend
-            if not na(last_bull_fractal_high) and thisHighPrice <= last_bull_fractal_high
-                is_valid_bullish := false
+        if enable_validation
+            if not na(last_bear_fractal_low) and math.abs(last_fractal_low - last_bear_fractal_low) < mintick
+                if not na(last_bull_fractal_high) and thisHighPrice <= last_bull_fractal_high
+                    is_valid_bullish := false
         
         if is_valid_bullish
             // Draw bullish trend line
@@ -158,12 +159,12 @@ if not na(pivot_low)
     
     // Check for bearish trend (high -> low)
     if not na(last_fractal_high) and not last_fractal_high_used and last_fractal_high_bar < thisLowBar and thisLowPrice < last_fractal_high
-        // Validate bearish trend: if starting from previous bullish high, new low must be lower than previous bearish low
+        // Optional validation
         is_valid_bearish = true
-        if not na(last_bull_fractal_high) and math.abs(last_fractal_high - last_bull_fractal_high) < mintick
-            // This bearish trend starts from the same high as previous bullish trend
-            if not na(last_bear_fractal_low) and thisLowPrice >= last_bear_fractal_low
-                is_valid_bearish := false
+        if enable_validation
+            if not na(last_bull_fractal_high) and math.abs(last_fractal_high - last_bull_fractal_high) < mintick
+                if not na(last_bear_fractal_low) and thisLowPrice >= last_bear_fractal_low
+                    is_valid_bearish := false
         
         if is_valid_bearish
             // Draw bearish trend line
