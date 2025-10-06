@@ -108,7 +108,7 @@ if array.size(fractal_lows) > 0
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal high)
-                target_level = na
+                float target_level = na
                 for i = array.size(fractal_highs) - 1 to 0
                     if array.get(fractal_high_times, i) > fractal_low_time
                         target_level := array.get(fractal_highs, i)
@@ -155,7 +155,7 @@ if array.size(fractal_highs) > 0
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal low)
-                target_level = na
+                float target_level = na
                 for i = array.size(fractal_lows) - 1 to 0
                     if array.get(fractal_low_times, i) > fractal_high_time
                         target_level := array.get(fractal_lows, i)
