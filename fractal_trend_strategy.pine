@@ -236,10 +236,8 @@ else
 barcolor(candle_color)
 
 // Plot stop and target levels
-if not na(stop_price)
-    hline(stop_price, "Stop Level", color=color.red, linestyle=hline.style_dashed)
-if not na(target_price)
-    hline(target_price, "Target Level", color=color.green, linestyle=hline.style_dashed)
+plot(stop_price, "Stop Level", color=color.red, linewidth=1, style=plot.style_linebr)
+plot(target_price, "Target Level", color=color.green, linewidth=1, style=plot.style_linebr)
 
 // ==================== ALERTS ====================
 if not na(entry_price) and barstate.isconfirmed
