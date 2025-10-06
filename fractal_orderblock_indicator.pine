@@ -33,6 +33,7 @@ var array<line> fractal_lines = array.new<line>()
 var array<line> target_lines = array.new<line>()
 var array<bool> ob_results = array.new<bool>()
 var array<bool> setup_completed = array.new<bool>() // Track if setup is complete (fractal + OB + target)
+var array<bool> fractal_ob_created = array.new<bool>() // Track if OB was already created for each fractal
 var int total_complete_setups = 0
 var int successful_complete_setups = 0
 
@@ -77,16 +78,20 @@ if bar_index >= fractal_period + 1 and not na(fractal_low)
 if is_fractal_high and not na(fractal_high)
     array.push(fractal_highs, fractal_high)
     array.push(fractal_high_times, fractal_time)
+    array.push(fractal_ob_created, false) // Mark that no OB created yet for this fractal
     if array.size(fractal_highs) > stats_count
         array.shift(fractal_highs)
         array.shift(fractal_high_times)
+        array.shift(fractal_ob_created)
 
 if is_fractal_low and not na(fractal_low)
     array.push(fractal_lows, fractal_low)
     array.push(fractal_low_times, fractal_time)
+    array.push(fractal_ob_created, false) // Mark that no OB created yet for this fractal
     if array.size(fractal_lows) > stats_count
         array.shift(fractal_lows)
         array.shift(fractal_low_times)
+        array.shift(fractal_ob_created)
 
 // ==================== ORDER BLOCK DETECTION ====================
 // Get OB timeframe data
@@ -106,9 +111,10 @@ ob_close_prev = request.security(syminfo.tickerid, ob_tf, close[1])
 if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_prev)
     fractal_low_level = array.get(fractal_lows, array.size(fractal_lows) - 1)
     fractal_low_time = array.get(fractal_low_times, array.size(fractal_low_times) - 1)
+    fractal_ob_already_created = array.get(fractal_ob_created, array.size(fractal_ob_created) - 1)
     
-    // Check if we're in the context of the latest fractal low
-    if ob_time >= fractal_low_time
+    // Check if we're in the context of the latest fractal low and no OB created yet
+    if ob_time >= fractal_low_time and not fractal_ob_already_created
         // Check if previous candle tested the fractal low (went below it)
         fractal_was_tested = ob_low_prev <= fractal_low_level
         
@@ -118,6 +124,9 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
                 // Create Bullish Order Block
                 ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
                 array.push(ob_boxes, ob_box)
+                
+                // Mark that OB was created for this fractal
+                array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
                 
                 // Find corresponding target (fractal high)
                 float target_level = na
@@ -142,9 +151,10 @@ if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_pre
 if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_prev)
     fractal_high_level = array.get(fractal_highs, array.size(fractal_highs) - 1)
     fractal_high_time = array.get(fractal_high_times, array.size(fractal_high_times) - 1)
+    fractal_ob_already_created = array.get(fractal_ob_created, array.size(fractal_ob_created) - 1)
     
-    // Check if we're in the context of the latest fractal high
-    if ob_time >= fractal_high_time
+    // Check if we're in the context of the latest fractal high and no OB created yet
+    if ob_time >= fractal_high_time and not fractal_ob_already_created
         // Check if previous candle tested the fractal high (went above it)
         fractal_was_tested = ob_high_prev >= fractal_high_level
         
@@ -154,6 +164,9 @@ if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_pr
                 // Create Bearish Order Block
                 ob_box = box.new(left=bar_index - 1, top=ob_high_prev, right=bar_index + 20, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2, xloc=xloc.bar_index)
                 array.push(ob_boxes, ob_box)
+                
+                // Mark that OB was created for this fractal
+                array.set(fractal_ob_created, array.size(fractal_ob_created) - 1, true)
                 
                 // Find corresponding target (fractal low)
                 float target_level = na
