@@ -47,19 +47,29 @@ fractal_time = request.security(syminfo.tickerid, fractal_tf, time)
 is_fractal_high = true
 is_fractal_low = true
 
-// Check fractal high
-for i = 1 to fractal_period
-    if fractal_high[i] >= fractal_high
-        is_fractal_high := false
-    if fractal_high[-i] >= fractal_high
-        is_fractal_high := false
+// Check fractal high - only if we have enough historical data
+if bar_index >= fractal_period * 2
+    for i = 1 to fractal_period
+        fractal_high_prev = request.security(syminfo.tickerid, fractal_tf, high[i])
+        fractal_high_next = request.security(syminfo.tickerid, fractal_tf, high[-i])
+        if not na(fractal_high_prev) and fractal_high_prev >= fractal_high
+            is_fractal_high := false
+        if not na(fractal_high_next) and fractal_high_next >= fractal_high
+            is_fractal_high := false
+else
+    is_fractal_high := false
 
-// Check fractal low  
-for i = 1 to fractal_period
-    if fractal_low[i] <= fractal_low
-        is_fractal_low := false
-    if fractal_low[-i] <= fractal_low
-        is_fractal_low := false
+// Check fractal low - only if we have enough historical data
+if bar_index >= fractal_period * 2
+    for i = 1 to fractal_period
+        fractal_low_prev = request.security(syminfo.tickerid, fractal_tf, low[i])
+        fractal_low_next = request.security(syminfo.tickerid, fractal_tf, low[-i])
+        if not na(fractal_low_prev) and fractal_low_prev <= fractal_low
+            is_fractal_low := false
+        if not na(fractal_low_next) and fractal_low_next <= fractal_low
+            is_fractal_low := false
+else
+    is_fractal_low := false
 
 // Store fractals
 if is_fractal_high and not na(fractal_high)
@@ -84,19 +94,25 @@ ob_open = request.security(syminfo.tickerid, ob_tf, open)
 ob_close = request.security(syminfo.tickerid, ob_tf, close)
 ob_time = request.security(syminfo.tickerid, ob_tf, time)
 
+// Get previous bar data safely
+ob_high_prev = request.security(syminfo.tickerid, ob_tf, high[1])
+ob_low_prev = request.security(syminfo.tickerid, ob_tf, low[1])
+ob_open_prev = request.security(syminfo.tickerid, ob_tf, open[1])
+ob_close_prev = request.security(syminfo.tickerid, ob_tf, close[1])
+
 // Check for Bullish Order Block (after fractal low)
-if array.size(fractal_lows) > 0
+if array.size(fractal_lows) > 0 and not na(ob_close_prev) and not na(ob_open_prev)
     fractal_low_level = array.get(fractal_lows, array.size(fractal_lows) - 1)
     fractal_low_time = array.get(fractal_low_times, array.size(fractal_low_times) - 1)
     
     // Check if we're in the context of the latest fractal low
     if ob_time >= fractal_low_time
         // Look for bearish candle followed by bullish candle
-        if ob_close[1] < ob_open[1] and ob_close > ob_open and ob_open[1] > fractal_low_level
+        if ob_close_prev < ob_open_prev and ob_close > ob_open and ob_open_prev > fractal_low_level
             // Check if low of either candle is below fractal low
-            if ob_low[1] <= fractal_low_level or ob_low <= fractal_low_level
+            if ob_low_prev <= fractal_low_level or ob_low <= fractal_low_level
                 // Create Bullish Order Block
-                ob_box = box.new(left=ob_time[1], top=ob_high[1], right=ob_time + ob_extension * 60000, bottom=ob_low[1], bgcolor=ob_color, border_color=color.blue, border_width=2)
+                ob_box = box.new(left=ob_time - 60000, top=ob_high_prev, right=ob_time + ob_extension * 60000, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal high)
@@ -116,18 +132,18 @@ if array.size(fractal_lows) > 0
                     array.push(ob_results, false)
 
 // Check for Bearish Order Block (after fractal high)
-if array.size(fractal_highs) > 0
+if array.size(fractal_highs) > 0 and not na(ob_close_prev) and not na(ob_open_prev)
     fractal_high_level = array.get(fractal_highs, array.size(fractal_highs) - 1)
     fractal_high_time = array.get(fractal_high_times, array.size(fractal_high_times) - 1)
     
     // Check if we're in the context of the latest fractal high
     if ob_time >= fractal_high_time
         // Look for bullish candle followed by bearish candle
-        if ob_close[1] > ob_open[1] and ob_close < ob_open and ob_open[1] < fractal_high_level
+        if ob_close_prev > ob_open_prev and ob_close < ob_open and ob_open_prev < fractal_high_level
             // Check if high of either candle is above fractal high
-            if ob_high[1] >= fractal_high_level or ob_high >= fractal_high_level
+            if ob_high_prev >= fractal_high_level or ob_high >= fractal_high_level
                 // Create Bearish Order Block
-                ob_box = box.new(left=ob_time[1], top=ob_high[1], right=ob_time + ob_extension * 60000, bottom=ob_low[1], bgcolor=ob_color, border_color=color.blue, border_width=2)
+                ob_box = box.new(left=ob_time - 60000, top=ob_high_prev, right=ob_time + ob_extension * 60000, bottom=ob_low_prev, bgcolor=ob_color, border_color=color.blue, border_width=2)
                 array.push(ob_boxes, ob_box)
                 
                 // Find corresponding target (fractal low)
