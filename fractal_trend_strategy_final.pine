@@ -1,0 +1,346 @@
+//@version=5
+strategy("Fractal Trend Strategy v3.0 - Final", overlay=true, 
+         default_qty_type=strategy.fixed, default_qty_value=1, calc_on_every_tick=false)
+
+// ================== Inputs ==================
+left              = input.int(2, title="Candles before", minval=1)
+right             = input.int(2, title="Candles after", minval=1)
+corr_pct          = input.float(60.0, title="% of correction", minval=0.0, maxval=100.0)
+min_strong_pct    = input.float(400.0, title="Min % for strong candle")
+max_strong_pct    = input.float(700.0, title="Max % for strong candle")
+rr                = input.float(2.0, title="RR")
+fixed_risk_usd    = input.float(100.0, title="Base Risk per Trade, USD", minval=0.01)
+wins_to_boost     = input.int(3, title="Wins to Boost Risk", minval=1)
+losses_to_cut     = input.int(3, title="Losses to Cut Risk", minval=1)
+bull_line_color   = input.color(color.new(color.green, 0), title="Bull Line Color")
+bear_line_color   = input.color(color.new(color.red, 0), title="Bear Line Color")
+long_candle_color = input.color(color.new(color.blue, 0), title="Long Entry Candle Color")
+short_candle_color= input.color(color.new(color.purple, 0), title="Short Entry Candle Color")
+stop_type         = input.string("Min/Max Price", title="Stop Loss Type", options=["Min/Max Price", "Signal Candle"])
+show_fractals     = input.bool(true, title="Show Fractals")
+max_lines         = input.int(500, "Max lines keep", minval=50)
+show_debug        = input.bool(false, title="Show Debug Info")
+enable_validation = input.bool(true, title="Enable Trend Validation")
+
+// ================== Tick size ==================
+mintick    = syminfo.mintick
+pointvalue = syminfo.pointvalue
+
+// ================== Pivot detection ==================
+pivot_high = ta.pivothigh(high, left, right)
+pivot_low  = ta.pivotlow(low, left, right)
+
+// Correct offset for fractal markers - show them at the actual fractal bar
+plotshape(show_fractals and not na(pivot_high), style=shape.triangledown, location=location.abovebar, 
+          color=color.gray, offset=-right, title="Fractal High")
+plotshape(show_fractals and not na(pivot_low), style=shape.triangleup, location=location.belowbar, 
+          color=color.gray, offset=-right, title="Fractal Low")
+
+// ================== Variables ==================
+var line[] lines = array.new_line()
+
+// Risk management
+var float current_risk       = fixed_risk_usd
+var bool  cutting_mode       = false
+var int   consecutive_wins   = 0
+var int   consecutive_losses = 0
+var bool  boosted            = false
+
+// Candle coloring
+var bool is_long_entry  = false
+var bool is_short_entry = false
+
+// Fractal tracking
+var float last_fractal_low = na
+var float last_fractal_high = na
+var int   last_fractal_low_bar = na
+var int   last_fractal_high_bar = na
+var bool  last_fractal_low_used = false
+var bool  last_fractal_high_used = false
+
+// Trend detection variables
+var float bull_fractal_low = na
+var float bull_fractal_high = na
+var int   bull_fractal_low_bar = na
+var int   bull_fractal_high_bar = na
+var bool  in_bullish_trend = false
+var bool  bull_trend_invalidated = false
+
+var float bear_fractal_high = na
+var float bear_fractal_low = na
+var int   bear_fractal_high_bar = na
+var int   bear_fractal_low_bar = na
+var bool  in_bearish_trend = false
+var bool  bear_trend_invalidated = false
+
+// Correction tracking
+var float min_correction_low = na
+var float max_correction_high = na
+var float sum_bear_candle_ticks = 0.0
+var float sum_bull_candle_ticks = 0.0
+var int   count_bear_candles = 0
+var int   count_bull_candles = 0
+
+// Previous trend tracking for validation
+var float last_bull_fractal_high = na
+var float last_bear_fractal_low = na
+
+// ================== Risk Management Logic ==================
+if strategy.closedtrades > strategy.closedtrades[1]
+    is_win = strategy.wintrades > strategy.wintrades[1]
+    if is_win
+        cutting_mode := false
+        consecutive_losses := 0
+        consecutive_wins += 1
+        current_risk := fixed_risk_usd
+        if consecutive_wins >= wins_to_boost
+            current_risk := current_risk * 2
+            boosted := true
+            consecutive_wins := 0
+    else
+        consecutive_wins := 0
+        if boosted
+            boosted := false
+            current_risk := fixed_risk_usd
+            consecutive_losses := 0
+        else
+            consecutive_losses += 1
+            if not cutting_mode and consecutive_losses >= losses_to_cut
+                cutting_mode := true
+                current_risk := current_risk / 2
+            else if cutting_mode
+                current_risk := current_risk / 2
+        current_risk := math.max(current_risk, 1)
+
+// ================== Fractal Detection and Trend Lines ==================
+if not na(pivot_high)
+    thisHighBar = bar_index - left
+    thisHighPrice = pivot_high
+    
+    // Check for bullish trend (low -> high)
+    if not na(last_fractal_low) and not last_fractal_low_used and last_fractal_low_bar < thisHighBar and thisHighPrice > last_fractal_low
+        // Optional validation
+        is_valid_bullish = true
+        if enable_validation
+            if not na(last_bear_fractal_low) and math.abs(last_fractal_low - last_bear_fractal_low) < mintick
+                if not na(last_bull_fractal_high) and thisHighPrice <= last_bull_fractal_high
+                    is_valid_bullish := false
+        
+        if is_valid_bullish
+            // Draw bullish trend line
+            l = line.new(last_fractal_low_bar, last_fractal_low, thisHighBar, thisHighPrice, 
+                        xloc=xloc.bar_index, color=bull_line_color, width=2, extend=extend.none)
+            array.push(lines, l)
+            
+            // Set bullish trend parameters
+            bull_fractal_low := last_fractal_low
+            bull_fractal_high := thisHighPrice
+            bull_fractal_low_bar := last_fractal_low_bar
+            bull_fractal_high_bar := thisHighBar
+            in_bullish_trend := true
+            bull_trend_invalidated := false
+            // Start correction tracking from the current bar (after fractal confirmation)
+            // Use current high as starting point for correction tracking
+            min_correction_low := high
+            sum_bear_candle_ticks := 0.0
+            count_bear_candles := 0
+            
+            // Update last bullish high for future validation
+            last_bull_fractal_high := thisHighPrice
+            
+            // Mark low as used
+            last_fractal_low_used := true
+    
+    // Update last high
+    last_fractal_high := thisHighPrice
+    last_fractal_high_bar := thisHighBar
+    last_fractal_high_used := false
+
+if not na(pivot_low)
+    thisLowBar = bar_index - left
+    thisLowPrice = pivot_low
+    
+    // Check for bearish trend (high -> low)
+    if not na(last_fractal_high) and not last_fractal_high_used and last_fractal_high_bar < thisLowBar and thisLowPrice < last_fractal_high
+        // Optional validation
+        is_valid_bearish = true
+        if enable_validation
+            if not na(last_bull_fractal_high) and math.abs(last_fractal_high - last_bull_fractal_high) < mintick
+                if not na(last_bear_fractal_low) and thisLowPrice >= last_bear_fractal_low
+                    is_valid_bearish := false
+        
+        if is_valid_bearish
+            // Draw bearish trend line
+            l = line.new(last_fractal_high_bar, last_fractal_high, thisLowBar, thisLowPrice, 
+                        xloc=xloc.bar_index, color=bear_line_color, width=2, extend=extend.none)
+            array.push(lines, l)
+            
+            // Set bearish trend parameters
+            bear_fractal_high := last_fractal_high
+            bear_fractal_low := thisLowPrice
+            bear_fractal_high_bar := last_fractal_high_bar
+            bear_fractal_low_bar := thisLowBar
+            in_bearish_trend := true
+            bear_trend_invalidated := false
+            // Start correction tracking from the current bar (after fractal confirmation)
+            // Use current low as starting point for correction tracking
+            max_correction_high := low
+            sum_bull_candle_ticks := 0.0
+            count_bull_candles := 0
+            
+            // Update last bearish low for future validation
+            last_bear_fractal_low := thisLowPrice
+            
+            // Mark high as used
+            last_fractal_high_used := true
+    
+    // Update last low
+    last_fractal_low := thisLowPrice
+    last_fractal_low_bar := thisLowBar
+    last_fractal_low_used := false
+
+// Remove old lines
+if array.size(lines) > max_lines
+    removeCount = array.size(lines) - max_lines
+    for i = 0 to removeCount - 1
+        ln = array.shift(lines)
+        line.delete(ln)
+
+// ================== Trend Invalidation ==================
+// Bullish trend invalidation
+if in_bullish_trend and not bull_trend_invalidated
+    if low < bull_fractal_low
+        bull_trend_invalidated := true
+        in_bullish_trend := false
+        // Reset correction tracking
+        min_correction_low := na
+        sum_bear_candle_ticks := 0.0
+        count_bear_candles := 0
+    else
+        // Check correction depth
+        min_correction_low := math.min(min_correction_low, low)
+        correction_depth = bull_fractal_high - min_correction_low
+        max_allowed_correction = (bull_fractal_high - bull_fractal_low) * (corr_pct / 100)
+        if correction_depth > max_allowed_correction
+            bull_trend_invalidated := true
+            in_bullish_trend := false
+            // Reset correction tracking
+            min_correction_low := na
+            sum_bear_candle_ticks := 0.0
+            count_bear_candles := 0
+
+// Bearish trend invalidation
+if in_bearish_trend and not bear_trend_invalidated
+    if high > bear_fractal_high
+        bear_trend_invalidated := true
+        in_bearish_trend := false
+        // Reset correction tracking
+        max_correction_high := na
+        sum_bull_candle_ticks := 0.0
+        count_bull_candles := 0
+    else
+        // Check correction depth
+        max_correction_high := math.max(max_correction_high, high)
+        correction_depth = max_correction_high - bear_fractal_low
+        max_allowed_correction = (bear_fractal_high - bear_fractal_low) * (corr_pct / 100)
+        if correction_depth > max_allowed_correction
+            bear_trend_invalidated := true
+            in_bearish_trend := false
+            // Reset correction tracking
+            max_correction_high := na
+            sum_bull_candle_ticks := 0.0
+            count_bull_candles := 0
+
+// ================== Correction Analysis ==================
+// Track bearish candles during bullish correction
+if in_bullish_trend and not bull_trend_invalidated and close < open
+    candle_ticks = (open - close) / mintick
+    sum_bear_candle_ticks += candle_ticks
+    count_bear_candles += 1
+
+// Track bullish candles during bearish correction
+if in_bearish_trend and not bear_trend_invalidated and close > open
+    candle_ticks = (close - open) / mintick
+    sum_bull_candle_ticks += candle_ticks
+    count_bull_candles += 1
+
+// ================== Entry Logic ==================
+// Bullish entry
+if in_bullish_trend and not bull_trend_invalidated and close > open
+    avg_bear_ticks = count_bear_candles > 0 ? sum_bear_candle_ticks / count_bear_candles : 1
+    current_candle_ticks = (close - open) / mintick
+    min_required_ticks = avg_bear_ticks * (min_strong_pct / 100)
+    max_required_ticks = avg_bear_ticks * (max_strong_pct / 100)
+    
+    if current_candle_ticks >= min_required_ticks and current_candle_ticks <= max_required_ticks
+        // Additional filter: strong candle should not break fractal high
+        if open < bull_fractal_high and close < bull_fractal_high
+            entry_price = close
+            // For stop loss, use the most conservative level
+            sl_price = stop_type == "Min/Max Price" ? min_correction_low : low
+            // Ensure stop is below the fractal low for additional safety
+            sl_price := math.min(sl_price, bull_fractal_low)
+            risk = entry_price - sl_price
+        
+            if risk > 0
+                qty = current_risk / (risk * pointvalue)
+                tp_price = entry_price + risk * rr
+                
+                strategy.entry("Long", strategy.long, qty=qty)
+                strategy.exit("Exit Long", "Long", stop=sl_price, limit=tp_price)
+                is_long_entry := true
+                
+                // Reset trend after entry
+                in_bullish_trend := false
+                bull_trend_invalidated := true
+                min_correction_low := na
+                sum_bear_candle_ticks := 0.0
+                count_bear_candles := 0
+
+// Bearish entry
+if in_bearish_trend and not bear_trend_invalidated and close < open
+    avg_bull_ticks = count_bull_candles > 0 ? sum_bull_candle_ticks / count_bull_candles : 1
+    current_candle_ticks = (open - close) / mintick
+    min_required_ticks = avg_bull_ticks * (min_strong_pct / 100)
+    max_required_ticks = avg_bull_ticks * (max_strong_pct / 100)
+    
+    if current_candle_ticks >= min_required_ticks and current_candle_ticks <= max_required_ticks
+        // Additional filter: strong candle should not break fractal low
+        if open > bear_fractal_low and close > bear_fractal_low
+            entry_price = close
+            // For stop loss, use the most conservative level
+            sl_price = stop_type == "Min/Max Price" ? max_correction_high : high
+            // Ensure stop is above the fractal high for additional safety
+            sl_price := math.max(sl_price, bear_fractal_high)
+            risk = sl_price - entry_price
+        
+            if risk > 0
+                qty = current_risk / (risk * pointvalue)
+                tp_price = entry_price - risk * rr
+                
+                strategy.entry("Short", strategy.short, qty=qty)
+                strategy.exit("Exit Short", "Short", stop=sl_price, limit=tp_price)
+                is_short_entry := true
+                
+                // Reset trend after entry
+                in_bearish_trend := false
+                bear_trend_invalidated := true
+                max_correction_high := na
+                sum_bull_candle_ticks := 0.0
+                count_bull_candles := 0
+
+// ================== Debug Information ==================
+// All debug markers with correct offset - they should appear at the fractal confirmation bar
+plotchar(show_debug and not na(pivot_high), "High", "H", location.abovebar, color.red, size=size.small, offset=-right)
+plotchar(show_debug and not na(pivot_low), "Low", "L", location.belowbar, color.green, size=size.small, offset=-right)
+plotchar(show_debug and in_bullish_trend, "Bull", "B", location.belowbar, color.blue, size=size.small, offset=-right)
+plotchar(show_debug and in_bearish_trend, "Bear", "B", location.abovebar, color.orange, size=size.small, offset=-right)
+
+// Show validation info
+plotchar(show_debug and not na(last_bull_fractal_high), "LastBullHigh", "BH", location.abovebar, color.lime, size=size.tiny)
+plotchar(show_debug and not na(last_bear_fractal_low), "LastBearLow", "BL", location.belowbar, color.fuchsia, size=size.tiny)
+
+// ================== Candle Coloring ==================
+barcolor(is_long_entry ? long_candle_color : is_short_entry ? short_candle_color : na)
+is_long_entry := false
+is_short_entry := false
